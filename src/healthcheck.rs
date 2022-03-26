@@ -1,4 +1,4 @@
-use tracing::{info,error};
+use tracing::{info,error,warn};
 
 pub enum HealthcheckResult {
     Pass,
@@ -12,7 +12,7 @@ pub async fn healthcheck(endpoint: &str) -> HealthcheckResult {
         Ok(res) => {
             // .is_success() includes ALL 200-299 codes
             if !res.status().is_success() {
-                info!(target: "healthcheck", status = "fail");
+                warn!(target: "healthcheck", status = "fail");
                 return HealthcheckResult::Fail
             }
 
