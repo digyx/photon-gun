@@ -10,12 +10,14 @@ mod db;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let cli_args = config::load_cli_args();
 
-    // Load YAML config from default directory
-    // TODO: Allow user to pass directory via CLI
-    // TODO: Imeplement clap for CLI options
-    let conf = config::load_config("/etc/photon-gun/conf.yml");
+    // Enable tracing
+    tracing_subscriber::fmt()
+        .with_max_level(cli_args.logging_level)
+        .init();
+
+    let conf = config::load_config_file(cli_args.config_path);
 
     // Start the healthchecks
     let mut handlers = vec![];

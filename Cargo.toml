@@ -12,5 +12,6 @@ tracing = "0.1.32"
 tracing-subscriber = {version = "0.3.9", features = ["env-filter"] }
 tokio-postgres = "0.7.5"
 
+clap = { version = "3.1.6", features = ["derive"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_yaml = "0.8.23"
