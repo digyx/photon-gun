@@ -3,7 +3,6 @@ name = "photon-gun"
 authors = ["Devon Tingley <dtingley@twilit.io>"]
 description = "Basic and Lua-Scriptable HTTP Monitor."
 license = "MIT"
-license-file = "LICENSE.txt"
 version = "0.1.0"
 edition = "2021"
 
