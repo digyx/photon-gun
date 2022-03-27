@@ -2,13 +2,13 @@ use std::fs;
 
 use clap::Parser;
 use serde::Deserialize;
-use tracing::{error,info,debug};
+use tracing::{debug, error, info};
 
-#[derive(Parser,Debug)]
+#[derive(Parser, Debug)]
 #[clap(author,version,about,long_about = None)]
 pub struct CliArgs {
     /// Filepath to Config File
-    #[clap(short,long, default_value = "/etc/photon-gun/conf.yml")]
+    #[clap(short, long, default_value = "/etc/photon-gun/conf.yml")]
     pub config_path: String,
 
     /// Logging level (error, warn, info, debug, trace)
@@ -22,14 +22,14 @@ pub fn load_cli_args() -> CliArgs {
 
 // ==================== Config File ====================
 // TODO: Expand config file (not sure what it all needs yet)
-#[derive(Debug,Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigFile {
     pub postgres_uri: String,
     pub basic_checks: Vec<BasicCheck>,
 }
 
-#[derive(Debug,Deserialize)]
-pub struct BasicCheck{
+#[derive(Debug, Deserialize)]
+pub struct BasicCheck {
     pub name: String,
     pub endpoint: String,
     pub interval: u64,
@@ -38,26 +38,25 @@ pub struct BasicCheck{
 pub fn load_config_file(path: String) -> ConfigFile {
     debug!(%path);
     let contents = match fs::read_to_string(path) {
-        Ok(contents) =>{
+        Ok(contents) => {
             info!(msg = "config file loaded to string");
             debug!(%contents);
             contents
-        },
+        }
         Err(err) => {
             error!(error = %err);
             panic!("{err}")
-        },
+        }
     };
 
     match serde_yaml::from_str(contents.as_str()) {
         Ok(res) => {
             info!(msg = "config loaded from yaml string");
             res
-        },
+        }
         Err(err) => {
             error!(error = %err);
             panic!("{err}")
-        },
+        }
     }
 }
-

@@ -1,12 +1,12 @@
-use std::{time::Duration, error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 
-use tracing::{error,warn,info,debug};
-use tokio::signal::unix::{signal,SignalKind};
 use sqlx::postgres::PgPool;
+use tokio::signal::unix::{signal, SignalKind};
+use tracing::{debug, error, info, warn};
 
 mod config;
-mod healthcheck;
 mod db;
+mod healthcheck;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -35,7 +35,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
         let task = tokio::task::spawn(async move {
-
             info!(%service.name, msg = "starting basic checks");
             debug!(?service);
             loop {
@@ -46,23 +45,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Check will only log a success or failure when an HTTP response is received.
                 // Reqwest errors are not counted as they're not representative of an actual
                 // healthcheck
-                let is_success = match healthcheck::basic_check(&http_client, &service.endpoint).await {
-                    Ok(is_success) => {
-                        if !is_success {
-                            warn!(%service.name, status = "fail");
-                        } else {
-                            info!(%service.name, status = "is_success");
+                let is_success =
+                    match healthcheck::basic_check(&http_client, &service.endpoint).await {
+                        Ok(is_success) => {
+                            if !is_success {
+                                warn!(%service.name, status = "fail");
+                            } else {
+                                info!(%service.name, status = "is_success");
+                            }
+
+                            is_success
                         }
+                        Err(err) => {
+                            error!(error = %err);
+                            false
+                        }
+                    };
 
-                        is_success
-                    },
-                    Err(err) => {
-                        error!(error = %err);
-                        false
-                    }
-                };
-
-                if let Err(err) = db::record_basic_check(&db_client, &service.name, is_success).await {
+                if let Err(err) =
+                    db::record_basic_check(&db_client, &service.name, is_success).await
+                {
                     error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
                 }
             }
@@ -88,4 +90,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!(msg = "Tasks stopped.");
     Ok(())
 }
-
