@@ -35,26 +35,25 @@ pub struct BasicCheck{
     pub interval: u64,
 }
 
-#[tracing::instrument]
 pub fn load_config_file(path: String) -> ConfigFile {
     let contents = match fs::read_to_string(path) {
         Ok(contents) =>{
-            info!(target: "config", msg = "config file loaded to string");
+            info!(msg = "config file loaded to string");
             contents
         },
         Err(err) => {
-            error!(target: "config", err = format!("{err}").as_str());
+            error!(error = format!("{err}").as_str());
             panic!("{err}")
         },
     };
 
     match serde_yaml::from_str(contents.as_str()) {
         Ok(res) => {
-            info!(target: "config", msg = "config loaded from yaml string");
+            info!(msg = "config loaded from yaml string");
             res
         },
         Err(err) => {
-            error!(target: "config", err = format!("{err}").as_str());
+            error!(error = format!("{err}").as_str());
             panic!("{err}")
         },
     }

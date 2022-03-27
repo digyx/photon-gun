@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use healthcheck::HealthcheckResult;
-use tokio::{time::sleep,signal};
 use tracing::{error,info,debug};
 
 mod config;
@@ -33,7 +32,7 @@ async fn main() {
 
     // Wait for all handlers
     info!("Listening for SIGINT...");
-    signal::ctrl_c().await.expect("failed to listen for event");
+    tokio::signal::ctrl_c().await.expect("failed to listen for event");
     info!("SIGINT Receieved.");
 
     info!("Aborting...");
@@ -44,18 +43,18 @@ async fn main() {
     info!("Tasks stopped.");
 }
 
-#[tracing::instrument(skip(service))]
+#[tracing::instrument(level = "debug")]
 async fn shoot(service: config::BasicCheck) {
     let db_client = match db::DB::new(service.name.clone()).await {
         Ok(client) => client,
         Err(_) => {
             // Postgres error logged in `DB::new` function
-            error!(target: "service_events", error = "UNABLE TO CONNECT TO DATABASE");
+            error!(error = "UNABLE TO CONNECT TO DATABASE");
             return
         }
     };
 
-    info!(target: "service_events", msg = "starting healthchecks");
+    info!(msg = "starting healthchecks");
 
     // TODO: Determine if check is simple or complex BEFORE starting the loop
     // currently it does neither, so there's no real issue right now
@@ -66,19 +65,19 @@ async fn shoot(service: config::BasicCheck) {
             HealthcheckResult::Fail => false,
             // Reqwest error logged in `healthcheck` function
             HealthcheckResult::Error(_) => {
-                error!(target: "service_events",err = "UNABLE TO SEND HTTP REQUEST");
+                error!(error = "UNABLE TO SEND HTTP REQUEST");
                 return
             }
         };
 
         if db_client.record_healthcheck(res).await.is_err() {
             // Postgres error logged in `record_healthcheck` function
-            error!(target: "service_events", err = "UNABLE TO WRITE TO DATABASE");
+            error!(error = "UNABLE TO WRITE TO DATABASE");
             return
         }
 
-        debug!(target: "service_events", msg = "sleeping", duration = service.interval);
-        sleep(Duration::from_secs(service.interval)).await;
+        debug!(msg = "sleeping", duration = service.interval);
+        tokio::time::sleep(Duration::from_secs(service.interval)).await;
     }
 }
 

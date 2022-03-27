@@ -1,7 +1,7 @@
 use std::time::{UNIX_EPOCH, SystemTime};
 
 use tokio_postgres::{Client,NoTls};
-use tracing::{info,error};
+use tracing::{info,error, debug};
 
 #[derive(Debug)]
 pub struct DB{
@@ -10,7 +10,6 @@ pub struct DB{
 }
 
 impl DB {
-    #[tracing::instrument]
     pub async fn new(service_name: String) -> Result<DB, String> {
         // TODO: Grab postgres credentials from config file
         // TODO: Add TLS option for postgres
@@ -59,7 +58,6 @@ impl DB {
         })
     }
 
-    #[tracing::instrument]
     pub async fn record_healthcheck(&self, pass: bool) -> Result<(), String> {
         let now = SystemTime::now().
             duration_since(UNIX_EPOCH).
@@ -67,10 +65,11 @@ impl DB {
             as_secs() as i64;
 
         let sql_query = format!("INSERT INTO {} (time, pass) VALUES ($1, $2)", self.service_name);
+        debug!(sql_query = sql_query.as_str());
 
         match self.client.execute(sql_query.as_str(), &[&now, &pass]).await {
              Ok(rows_written) => {
-                 info!(target: "database", rows_written = rows_written);
+                 debug!(target: "database", rows_written = rows_written);
                  Ok(())
              },
              Err(err) => {
