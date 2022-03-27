@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use healthcheck::HealthcheckResult;
-use tracing::{error,info,debug};
+use tracing::{error,warn,info,debug};
 
 mod config;
 mod healthcheck;
@@ -21,7 +21,7 @@ async fn main() {
     // Start the healthchecks
     let mut handlers = vec![];
     for service in conf.basic_checks {
-        info!(target: "service_events", service = service.name.as_str(), msg = "Starting...");
+        info!(%service.name, msg = "spawning...");
 
         let task = tokio::task::spawn(async move {
             shoot(service).await
@@ -31,19 +31,19 @@ async fn main() {
     }
 
     // Wait for all handlers
-    info!("Listening for SIGINT...");
+    info!(msg = "Listening for SIGINT...");
     tokio::signal::ctrl_c().await.expect("failed to listen for event");
-    info!("SIGINT Receieved.");
+    info!(msg = "SIGINT Receieved.");
 
-    info!("Aborting...");
+    info!(msg = "Aborting tasks...");
     for handle in handlers {
         handle.abort();
     }
 
-    info!("Tasks stopped.");
+    info!(msg = "Tasks stopped.");
 }
 
-#[tracing::instrument(level = "debug")]
+#[tracing::instrument(level = "trace")]
 async fn shoot(service: config::BasicCheck) {
     let db_client = match db::DB::new(service.name.clone()).await {
         Ok(client) => client,
@@ -54,30 +54,34 @@ async fn shoot(service: config::BasicCheck) {
         }
     };
 
-    info!(msg = "starting healthchecks");
-
-    // TODO: Determine if check is simple or complex BEFORE starting the loop
-    // currently it does neither, so there's no real issue right now
     let http_client = reqwest::Client::new();
+    let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
+
+    info!(%service.name, msg = "starting basic checks");
+    debug!(?service);
     loop {
+        interval.tick().await;
+
         let res = match healthcheck::healthcheck(&http_client, &service.endpoint).await {
-            HealthcheckResult::Pass => true,
-            HealthcheckResult::Fail => false,
+            HealthcheckResult::Pass => {
+                info!(%service.name, status = "pass");
+                true
+            },
+            HealthcheckResult::Fail => {
+                warn!(%service.name, status = "fail");
+                false
+            },
             // Reqwest error logged in `healthcheck` function
             HealthcheckResult::Error(_) => {
-                error!(error = "UNABLE TO SEND HTTP REQUEST");
+                error!(%service.name, error = "UNABLE TO SEND HTTP REQUEST");
                 return
             }
         };
 
         if db_client.record_healthcheck(res).await.is_err() {
             // Postgres error logged in `record_healthcheck` function
-            error!(error = "UNABLE TO WRITE TO DATABASE");
-            return
+            error!(%service.name, error = "UNABLE TO WRITE TO DATABASE");
         }
-
-        debug!(msg = "sleeping", duration = service.interval);
-        tokio::time::sleep(Duration::from_secs(service.interval)).await;
     }
 }
 

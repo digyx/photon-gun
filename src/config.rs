@@ -2,7 +2,7 @@ use std::fs;
 
 use clap::Parser;
 use serde::Deserialize;
-use tracing::{error,info};
+use tracing::{error,info,debug};
 
 #[derive(Parser,Debug)]
 #[clap(author,version,about,long_about = None)]
@@ -36,13 +36,15 @@ pub struct BasicCheck{
 }
 
 pub fn load_config_file(path: String) -> ConfigFile {
+    debug!(%path);
     let contents = match fs::read_to_string(path) {
         Ok(contents) =>{
             info!(msg = "config file loaded to string");
+            debug!(%contents);
             contents
         },
         Err(err) => {
-            error!(error = format!("{err}").as_str());
+            error!(error = %err);
             panic!("{err}")
         },
     };
@@ -53,7 +55,7 @@ pub fn load_config_file(path: String) -> ConfigFile {
             res
         },
         Err(err) => {
-            error!(error = format!("{err}").as_str());
+            error!(error = %err);
             panic!("{err}")
         },
     }

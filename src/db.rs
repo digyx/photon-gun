@@ -1,7 +1,7 @@
 use std::time::{UNIX_EPOCH, SystemTime};
 
 use tokio_postgres::{Client,NoTls};
-use tracing::{info,error, debug};
+use tracing::{error,debug};
 
 #[derive(Debug)]
 pub struct DB{
@@ -18,11 +18,11 @@ impl DB {
             NoTls,
         ).await {
             Ok(client_conn) => {
-                info!(target: "database", msg = "connected");
+                debug!(msg = "connected");
                 client_conn
             },
             Err(err) => {
-                error!(target: "database", err = err.to_string().as_str());
+                error!(error = %err);
                 return Err(err.to_string())
             },
         };
@@ -30,7 +30,7 @@ impl DB {
         // Toss the Postgres connection in the Tokio runtime
         tokio::spawn(async move {
             if let Err(err) = conn.await {
-                error!(target: "database", err = format!("{err}").as_str());
+                error!(error = %err);
             }
         });
 
@@ -45,9 +45,9 @@ impl DB {
         );
 
         match client.execute(sql_query.as_str(), &[]).await {
-            Ok(_) => info!(target: "database", msg = "table created"),
+            Ok(_) => debug!(msg = "table created"),
             Err(err) => {
-                error!(target: "database", err = format!("{err}").as_str());
+                error!(error = %err);
                 return Err(err.to_string())
             },
         };
@@ -64,19 +64,18 @@ impl DB {
             unwrap().
             as_secs() as i64;
 
+        // Full query available in log_level DEBUG
         let sql_query = format!("INSERT INTO {} (time, pass) VALUES ($1, $2)", self.service_name);
-        debug!(sql_query = sql_query.as_str());
-
         match self.client.execute(sql_query.as_str(), &[&now, &pass]).await {
-             Ok(rows_written) => {
-                 debug!(target: "database", rows_written = rows_written);
-                 Ok(())
-             },
-             Err(err) => {
-                 error!(target: "database", err = format!("{err}").as_str());
-                 Err(err.to_string())
-             }
-         }
+            Ok(rows_written) => {
+                debug!(rows_written);
+                Ok(())
+            },
+            Err(err) => {
+                error!(error = %err);
+                Err(err.to_string())
+            }
+        }
     }
 }
 

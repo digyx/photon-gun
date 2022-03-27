@@ -1,4 +1,4 @@
-use tracing::{info,error,warn};
+use tracing::{error,warn,debug};
 
 pub enum HealthcheckResult {
     Pass,
@@ -11,17 +11,19 @@ pub async fn healthcheck(client: &reqwest::Client, endpoint: &str) -> Healthchec
         Ok(res) => {
             // .is_success() includes ALL 200-299 codes
             if !res.status().is_success() {
-                warn!(status = "fail", endpoint);
+                warn!(endpoint, status = "fail", status_code = %res.status());
+                debug!(?res);
                 return HealthcheckResult::Fail
             }
 
-            info!(status = "pass", endpoint);
+            debug!(?res);
+            debug!(endpoint, status = "pass");
             HealthcheckResult::Pass
         },
 
         // Reqwest failure
         Err(err) => {
-            error!(error = format!("{err}").as_str());
+            error!(error = %err);
             HealthcheckResult::Error(err.to_string())
         }
     }
