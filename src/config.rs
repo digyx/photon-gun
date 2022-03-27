@@ -12,7 +12,7 @@ pub struct CliArgs {
     pub config_path: String,
 
     /// Logging level (error, warn, info, debug, trace)
-    #[clap(short, long, default_value = "warn")]
+    #[clap(short, long, default_value = "info")]
     pub logging_level: tracing::Level,
 }
 

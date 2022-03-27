@@ -58,7 +58,7 @@ impl DB {
         })
     }
 
-    pub async fn record_healthcheck(&self, pass: bool) -> Result<(), String> {
+    pub async fn record_basic_check(&self, pass: bool) -> Result<(), tokio_postgres::Error> {
         let now = SystemTime::now().
             duration_since(UNIX_EPOCH).
             unwrap().
@@ -66,16 +66,10 @@ impl DB {
 
         // Full query available in log_level DEBUG
         let sql_query = format!("INSERT INTO {} (time, pass) VALUES ($1, $2)", self.service_name);
-        match self.client.execute(sql_query.as_str(), &[&now, &pass]).await {
-            Ok(rows_written) => {
-                debug!(rows_written);
-                Ok(())
-            },
-            Err(err) => {
-                error!(error = %err);
-                Err(err.to_string())
-            }
-        }
+        let rows_written = self.client.execute(sql_query.as_str(), &[&now, &pass]).await?;
+
+        debug!(rows_written);
+        Ok(())
     }
 }
 
