@@ -1,13 +1,14 @@
-use std::time::Duration;
+use std::{time::Duration, error::Error};
 
 use tracing::{error,warn,info,debug};
+use tokio::signal::unix::{signal,SignalKind};
 
 mod config;
 mod healthcheck;
 mod db;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     let cli_args = config::load_cli_args();
 
     // Enable tracing
@@ -43,7 +44,6 @@ async fn main() {
                 match healthcheck::basic_check(&http_client, &service.endpoint).await {
                     Ok(success) => {
                         if let Err(err) = db_client.record_basic_check(success).await {
-                            // Postgres error logged in `record_healthcheck` function
                             error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
                         }
 
@@ -68,8 +68,13 @@ async fn main() {
 
     // Wait for all handlers
     info!(msg = "Listening for SIGINT...");
-    tokio::signal::ctrl_c().await.expect("failed to listen for event");
-    info!(msg = "SIGINT Receieved.");
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
+
+    tokio::select! {
+        _ = sigint.recv() => info!(msg = "SIGINT received"),
+        _ = sigterm.recv() => info!(msg = "SIGTERM received"),
+    }
 
     info!(msg = "Aborting tasks...");
     for handle in handlers {
@@ -77,5 +82,6 @@ async fn main() {
     }
 
     info!(msg = "Tasks stopped.");
+    Ok(())
 }
 
