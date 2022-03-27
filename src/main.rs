@@ -1,7 +1,8 @@
-use std::{time::Duration, error::Error};
+use std::{time::Duration, error::Error, sync::Arc};
 
 use tracing::{error,warn,info,debug};
 use tokio::signal::unix::{signal,SignalKind};
+use sqlx::postgres::PgPool;
 
 mod config;
 mod healthcheck;
@@ -17,60 +18,63 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let conf = config::load_config_file(cli_args.config_path);
+    let pool = PgPool::connect(&conf.postgres_uri).await?;
+    let pool_arc = Arc::new(pool);
 
     // Start the basic checks
     let mut handlers = vec![];
     for service in conf.basic_checks {
         info!(%service.name, msg = "spawning...");
 
-        let task = tokio::task::spawn(async move {
-            let db_client = match db::DB::new(service.name.clone()).await {
-                Ok(client) => client,
-                Err(_) => {
-                    // Postgres error logged in `DB::new` function
-                    error!(error = "UNABLE TO CONNECT TO DATABASE");
-                    return
-                }
-            };
+        // Increment the RC on the PgPool ARC to deal with the move
+        let db_client = pool_arc.clone();
+        // Each task gets its own reqwest client to re-use existing connections
+        let http_client = reqwest::Client::new();
+        // Ensures that the tasks runs every two seconds without being affected by the execution
+        // time.  This does mean checks can overlap if execution takes too long
+        let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
-            let http_client = reqwest::Client::new();
-            let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
+        let task = tokio::task::spawn(async move {
 
             info!(%service.name, msg = "starting basic checks");
             debug!(?service);
             loop {
+                // Tik tok
+                // Initial call is passed through immediately
                 interval.tick().await;
 
-                match healthcheck::basic_check(&http_client, &service.endpoint).await {
-                    Ok(success) => {
-                        if let Err(err) = db_client.record_basic_check(success).await {
-                            error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
-                        }
-
-                        if !success {
+                // Check will only log a success or failure when an HTTP response is received.
+                // Reqwest errors are not counted as they're not representative of an actual
+                // healthcheck
+                let is_success = match healthcheck::basic_check(&http_client, &service.endpoint).await {
+                    Ok(is_success) => {
+                        if !is_success {
                             warn!(%service.name, status = "fail");
-                            continue
+                        } else {
+                            info!(%service.name, status = "is_success");
                         }
 
-                        info!(%service.name, status = "pass");
+                        is_success
                     },
                     Err(err) => {
                         error!(error = %err);
-                        continue
+                        false
                     }
-                }
+                };
 
+                if let Err(err) = db::record_basic_check(&db_client, &service.name, is_success).await {
+                    error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
+                }
             }
         });
 
         handlers.push(task);
     }
 
-    // Wait for all handlers
-    info!(msg = "Listening for SIGINT...");
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;
 
+    // Wait for all handlers
     tokio::select! {
         _ = sigint.recv() => info!(msg = "SIGINT received"),
         _ = sigterm.recv() => info!(msg = "SIGTERM received"),

@@ -1,7 +1,10 @@
 use tracing::{warn,debug};
 
 pub async fn basic_check(client: &reqwest::Client, endpoint: &str) -> Result<bool, reqwest::Error>{
-    let res = client.get(endpoint).send().await?;
+    let res = client
+        .get(endpoint)
+        .send()
+        .await?;
 
     // .is_success() includes ALL 200-299 codes
     if !res.status().is_success() {
