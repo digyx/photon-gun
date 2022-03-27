@@ -19,7 +19,7 @@ async fn main() {
 
     // Start the healthchecks
     let mut handlers = vec![];
-    for service in conf {
+    for service in conf.basic_checks {
         info!(target: "service_events", service = service.name.as_str(), msg = "Starting...");
 
         let task = tokio::task::spawn(async move {
@@ -43,8 +43,8 @@ async fn main() {
 }
 
 #[tracing::instrument(skip(service))]
-async fn shoot(service: config::ServiceConfig) {
-    let mut db_client = match db::DB::new(service.name.clone()).await {
+async fn shoot(service: config::BasicCheck) {
+    let db_client = match db::DB::new(service.name.clone()).await {
         Ok(client) => client,
         Err(_) => {
             // Postgres error logged in `DB::new` function
@@ -57,8 +57,9 @@ async fn shoot(service: config::ServiceConfig) {
 
     // TODO: Determine if check is simple or complex BEFORE starting the loop
     // currently it does neither, so there's no real issue right now
+    let http_client = reqwest::Client::new();
     loop {
-        let res = match healthcheck::healthcheck(&service.endpoint).await {
+        let res = match healthcheck::healthcheck(&http_client, &service.endpoint).await {
             HealthcheckResult::Pass => true,
             HealthcheckResult::Fail => false,
             // Reqwest error logged in `healthcheck` function
@@ -68,7 +69,7 @@ async fn shoot(service: config::ServiceConfig) {
             }
         };
 
-        if let Err(_) = db_client.record_healthcheck(res).await {
+        if db_client.record_healthcheck(res).await.is_err() {
             // Postgres error logged in `record_healthcheck` function
             error!(target: "service_events", err = "UNABLE TO WRITE TO DATABASE");
             return

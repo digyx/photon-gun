@@ -60,7 +60,7 @@ impl DB {
     }
 
     #[tracing::instrument]
-    pub async fn record_healthcheck(&mut self, pass: bool) -> Result<(), String> {
+    pub async fn record_healthcheck(&self, pass: bool) -> Result<(), String> {
         let now = SystemTime::now().
             duration_since(UNIX_EPOCH).
             unwrap().

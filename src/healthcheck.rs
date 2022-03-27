@@ -7,8 +7,8 @@ pub enum HealthcheckResult {
 }
 
 #[tracing::instrument]
-pub async fn healthcheck(endpoint: &str) -> HealthcheckResult {
-    match reqwest::get(endpoint).await {
+pub async fn healthcheck(client: &reqwest::Client, endpoint: &str) -> HealthcheckResult {
+    match client.get(endpoint).send().await {
         Ok(res) => {
             // .is_success() includes ALL 200-299 codes
             if !res.status().is_success() {

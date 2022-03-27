@@ -4,15 +4,17 @@ use serde::Deserialize;
 use tracing::{error,info};
 
 // TODO: Expand config file (not sure what it all needs yet)
-pub type Config = Vec<ServiceConfig>;
+#[derive(Debug,Deserialize)]
+pub struct Config {
+    pub postgres_uri: String,
+    pub basic_checks: Vec<BasicCheck>,
+}
 
 #[derive(Debug,Deserialize)]
-pub struct ServiceConfig {
+pub struct BasicCheck{
     pub name: String,
     pub endpoint: String,
     pub interval: u64,
-    pub validate: bool,
-    pub lua_script: String,
 }
 
 #[tracing::instrument]
