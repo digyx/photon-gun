@@ -2,7 +2,8 @@ use std::{error::Error, sync::Arc, time::Duration};
 
 use sqlx::postgres::PgPool;
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Level};
+use tracing_subscriber::{filter, prelude::*};
 
 mod config;
 mod db;
@@ -12,9 +13,16 @@ mod healthcheck;
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli_args = config::load_cli_args();
 
+    // sqlx::query logs ALL sql queries by defualt to Level::INFO
+    // This is excessive, so this will only allow WARN and ERROR logs from sqlx
+    let filter = filter::Targets::new()
+        .with_target("photon_gun", cli_args.logging_level)
+        .with_target("sqlx::query", Level::WARN);
+
     // Enable tracing
-    tracing_subscriber::fmt()
-        .with_max_level(cli_args.logging_level)
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
         .init();
 
     let conf = config::load_config_file(cli_args.config_path);
@@ -55,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             if !is_success {
                                 warn!(%service.name, status = "fail");
                             } else {
-                                info!(%service.name, status = "is_success");
+                                info!(%service.name, status = "pass");
                             }
 
                             is_success

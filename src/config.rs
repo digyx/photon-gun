@@ -25,6 +25,7 @@ pub fn load_cli_args() -> CliArgs {
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
     pub postgres_uri: String,
+    // pub max_connections: u32,
     pub basic_checks: Vec<BasicCheck>,
 }
 
