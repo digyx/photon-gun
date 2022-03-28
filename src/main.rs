@@ -29,7 +29,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let pool = PgPool::connect(&conf.postgres_uri).await?;
     let pool_arc = Arc::new(pool);
 
-    // Start the basic checks
+    // Spin off basic check off into its own Tokio task
+    // We save the handlers for aborting later, if necessary
     let mut handlers = vec![];
     for service in conf.basic_checks {
         info!(%service.name, msg = "spawning...");
@@ -54,28 +55,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Initial call is passed through immediately
                 interval.tick().await;
 
-                // Check will only log a success or failure when an HTTP response is received.
-                // Reqwest errors are not counted as they're not representative of an actual
-                // healthcheck
-                let is_success =
-                    match healthcheck::basic_check(&http_client, &service.endpoint).await {
-                        Ok(is_success) => {
-                            if !is_success {
-                                warn!(%service.name, status = "fail");
-                            } else {
-                                info!(%service.name, status = "pass");
-                            }
+                // Checks will count ALL errors as a failed healthcheck and the messages saved to
+                // Postgres and logged via tracing
+                //
+                // Reqwest Error............String representation of error
+                // Status Code is not 2xx...String representation of status code (ex. "404 Not Found")
+                // Status Code is 2xx.......Empty string
+                let res = match healthcheck::basic_check(&http_client, &service.endpoint).await {
+                    Ok(_) => {
+                        info!(%service.name, status = "pass");
+                        (true, String::new())
+                    }
+                    Err(err) => {
+                        warn!(%service.name, status = "fail", error = %err);
+                        (false, err)
+                    }
+                };
 
-                            is_success
-                        }
-                        Err(err) => {
-                            error!(error = %err);
-                            false
-                        }
-                    };
-
+                // Save result in postgres
                 if let Err(err) =
-                    db::record_basic_check(&db_client, &service.name, is_success).await
+                    db::record_basic_check(&db_client, &service.name, res.0, &res.1).await
                 {
                     error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
                 }

@@ -2,4 +2,8 @@ postgres_uri: "postgres://postgres:password@localhost:5432/photon-gun"
 basic_checks:
   - name: google
     endpoint: "https://google.com"
-    interval: 2
+    interval: 1
+
+  - name: vorona
+    endpoint: "https://vorona.gg"
+    interval: 1
