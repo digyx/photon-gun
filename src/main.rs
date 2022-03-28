@@ -28,6 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         // Increment the RC on the PgPool ARC to deal with the move
         let db_client = pool_arc.clone();
+        // Create the database table for the basic check
+        // Every basic check gets its own table
+        db::create_basic_check_table(&db_client, &service.name).await?;
+
         // Each task gets its own reqwest client to re-use existing connections
         let http_client = reqwest::Client::new();
         // Ensures that the tasks runs every two seconds without being affected by the execution
