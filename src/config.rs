@@ -24,9 +24,36 @@ pub fn load_cli_args() -> CliArgs {
 // TODO: Expand config file (not sure what it all needs yet)
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
-    pub postgres_uri: String,
-    // pub max_connections: u32,
+    pub postgres: PostgresSettings,
+    #[serde(default = "no_basic_checks")]
     pub basic_checks: Vec<BasicCheck>,
+    #[serde(default = "no_luxurious_checks")]
+    pub luxurious_checks: Vec<LuxuriusCheck>,
+}
+
+fn no_basic_checks() -> Vec<BasicCheck> {
+    vec![]
+}
+
+fn no_luxurious_checks() -> Vec<LuxuriusCheck> {
+    vec![]
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PostgresSettings {
+    pub uri: String,
+    #[serde(default = "default_min_connections")]
+    pub min_connections: u32,
+    #[serde(default = "default_max_connections")]
+    pub max_connections: u32,
+}
+
+fn default_max_connections() -> u32 {
+    5
+}
+
+fn default_min_connections() -> u32 {
+    1
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +61,13 @@ pub struct BasicCheck {
     pub name: String,
     pub endpoint: String,
     pub interval: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LuxuriusCheck {
+    pub name: String,
+    pub interval: String,
+    pub script: String,
 }
 
 pub fn load_config_file(path: String) -> ConfigFile {

@@ -1,4 +1,8 @@
-postgres_uri: "postgres://postgres:password@localhost:5432/photon-gun"
+postgres:
+  uri: "postgres://postgres:password@localhost:5432/photon-gun"
+  min_connections: 1
+  max_connections: 5
+
 basic_checks:
   - name: google
     endpoint: "https://google.com"
@@ -7,3 +11,11 @@ basic_checks:
   - name: vorona
     endpoint: "https://vorona.gg"
     interval: 1
+
+luxurious_checks:
+  - name: test
+    script: "this doesn't work"
+    interval: 5
+  - name: luxury 2
+    script: "neither does this"
+    interval: 10

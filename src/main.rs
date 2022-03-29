@@ -1,6 +1,6 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
-use sqlx::postgres::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::{filter, prelude::*};
@@ -26,7 +26,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let conf = config::load_config_file(cli_args.config_path);
-    let pool = PgPool::connect(&conf.postgres_uri).await?;
+    let pool = PgPoolOptions::new()
+        .min_connections(conf.postgres.min_connections)
+        .max_connections(conf.postgres.max_connections)
+        .connect(&conf.postgres.uri)
+        .await?;
     let pool_arc = Arc::new(pool);
 
     // Spin off basic check off into its own Tokio task
@@ -39,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let db_client = pool_arc.clone();
         // Create the database table for the basic check
         // Every basic check gets its own table
-        db::create_basic_check_table(&db_client, &service.name).await?;
+        db::create_healthcheck_table(&db_client, &service.name).await?;
 
         // Each task gets its own reqwest client to re-use existing connections
         let http_client = reqwest::Client::new();
@@ -74,7 +78,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 // Save result in postgres
                 if let Err(err) =
-                    db::record_basic_check(&db_client, &service.name, res.0, &res.1).await
+                    db::record_healthcheck(&db_client, &service.name, res.0, &res.1).await
                 {
                     error!(%service.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
                 }
@@ -82,6 +86,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         });
 
         handlers.push(task);
+    }
+
+    for service in conf.luxurious_checks {
+        warn!(%service.name, %service.interval, %service.script, msg = "not implemented yet");
     }
 
     let mut sigint = signal(SignalKind::interrupt())?;

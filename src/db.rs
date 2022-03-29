@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::postgres;
 use tracing::debug;
 
-pub async fn create_basic_check_table(
+pub async fn create_healthcheck_table(
     pool: &postgres::PgPool,
     table_name: &str,
 ) -> Result<(), sqlx::Error> {
@@ -24,7 +24,7 @@ pub async fn create_basic_check_table(
     Ok(())
 }
 
-pub async fn record_basic_check(
+pub async fn record_healthcheck(
     pool: &postgres::PgPool,
     table_name: &str,
     pass: bool,
