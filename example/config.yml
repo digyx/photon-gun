@@ -12,10 +12,7 @@ basic_checks:
     endpoint: "https://vorona.gg"
     interval: 1
 
-luxurious_checks:
+luxury_checks:
   - name: test
-    script: "this doesn't work"
+    script: "test.lua"
     interval: 5
-  - name: luxury 2
-    script: "neither does this"
-    interval: 10

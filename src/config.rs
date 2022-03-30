@@ -4,6 +4,8 @@ use clap::Parser;
 use serde::Deserialize;
 use tracing::{debug, error, info};
 
+use crate::healthcheck;
+
 #[derive(Parser, Debug)]
 #[clap(author,version,about,long_about = None)]
 pub struct CliArgs {
@@ -26,16 +28,16 @@ pub fn load_cli_args() -> CliArgs {
 pub struct ConfigFile {
     pub postgres: PostgresSettings,
     #[serde(default = "no_basic_checks")]
-    pub basic_checks: Vec<BasicCheck>,
+    pub basic_checks: Vec<healthcheck::BasicCheckConfig>,
     #[serde(default = "no_luxurious_checks")]
-    pub luxurious_checks: Vec<LuxuriusCheck>,
+    pub luxury_checks: Vec<healthcheck::LuxuryCheckConfig>,
 }
 
-fn no_basic_checks() -> Vec<BasicCheck> {
+fn no_basic_checks() -> Vec<healthcheck::BasicCheckConfig> {
     vec![]
 }
 
-fn no_luxurious_checks() -> Vec<LuxuriusCheck> {
+fn no_luxurious_checks() -> Vec<healthcheck::LuxuryCheckConfig> {
     vec![]
 }
 
@@ -54,20 +56,6 @@ fn default_max_connections() -> u32 {
 
 fn default_min_connections() -> u32 {
     1
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BasicCheck {
-    pub name: String,
-    pub endpoint: String,
-    pub interval: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LuxuriusCheck {
-    pub name: String,
-    pub interval: String,
-    pub script: String,
 }
 
 pub fn load_config_file(path: String) -> ConfigFile {
