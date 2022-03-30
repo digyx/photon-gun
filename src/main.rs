@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         handlers.push(task);
     }
 
-    for service in conf.luxurious_checks {
+    for service in conf.luxury_checks {
         info!(%service.name, msg = "starting luxury check...");
 
         let db_client = pool_arc.clone();
