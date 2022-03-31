@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use hlua::LuaError;
+use rlua::{Lua, StdLib};
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::db;
 
@@ -60,30 +60,58 @@ impl LuxuryCheck {
     }
 
     fn ping(&self) -> Result<String, String> {
-        let mut lua = hlua::Lua::new();
-        lua.open_base();
-        lua.set("http_get", hlua::function1(http_get));
+        let lua = Lua::new();
 
-        match lua.execute::<String>(&self.script) {
-            Ok(res) => Ok(res),
-            Err(LuaError::ExecutionError(err)) => Err(err),
+        lua.load_from_std_lib(StdLib::BASE).unwrap();
+
+        // Load Photon module into lua context
+        // This is a table with various Rust functions that can be accessed in lua through the
+        // photon table
+        //
+        // Planned functions:
+        //  - HTTP
+        //      - GET (implemented)
+        //      - POST w/ Body
+        //      - Custom Request w/ Method, Body, Headers
+        //  - JSON (probs custom parser)
+        //      - Encode from Table
+        //      - Decode to Table
+        match lua.context(|ctx| {
+            let http_table = ctx.create_table()?;
+            http_table.set("get", ctx.create_function(http_get)?)?;
+
+            let photon_table = ctx.create_table()?;
+            photon_table.set("http", http_table)?;
+
+            ctx.globals().set("photon", photon_table)
+        }) {
+            Ok(_) => debug!("Photon module loaded into Lua context."),
             Err(err) => {
-                error!(error = %err);
+                error!(%self.name, msg = "Could not load Photon module into Lua environment.", %err);
+                return Err(err.to_string());
+            }
+        };
+
+        lua.context(|ctx| match ctx.load(&self.script).eval() {
+            Ok(res) => Ok(res),
+            Err(err) => {
+                error!(%err);
                 Err(err.to_string())
             }
-        }
+        })
     }
 }
 
-fn http_get(url: String) -> (u16, String) {
-    let client = reqwest::blocking::Client::new();
-    match client.get(url).send() {
+// Send basic HTTP GET request
+// Returns status code and response body
+fn http_get(_ctx: rlua::Context, url: String) -> Result<(u16, String), rlua::Error> {
+    match reqwest::blocking::get(url) {
         Ok(res) => {
             let status_code = res.status().as_u16();
             let body = res.text().unwrap();
 
-            (status_code, body)
+            Ok((status_code, body))
         }
-        Err(err) => (0, err.to_string()),
+        Err(err) => Err(rlua::Error::ExternalError(Arc::new(err))),
     }
 }
