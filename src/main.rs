@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
-        let lua_script = fs::read_to_string(&format!("example/scripts/{}", service.script))?;
+        let lua_script = fs::read_to_string(&format!("example/scripts/{}", service.script_path))?;
         let luxury_check_arc = Arc::new(healthcheck::LuxuryCheck::new(
             service, db_client, lua_script,
         ));
