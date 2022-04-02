@@ -1,22 +1,10 @@
 use std::{str::FromStr, sync::Arc};
 
 use rlua::StdLib;
-use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
 use crate::db;
-
-#[derive(Debug, Deserialize)]
-pub struct LuxuryCheckConfig {
-    pub name: String,
-    // Path to Lua script to be ran for the check
-    // Relative paths start in /etc/photon-gun/scripts/
-    #[serde(alias = "script")]
-    pub script_path: String,
-    // Length of time in seconds between checks starting
-    pub interval: u64,
-}
 
 #[derive(Debug)]
 pub struct LuxuryCheck {
@@ -28,9 +16,9 @@ pub struct LuxuryCheck {
 }
 
 impl LuxuryCheck {
-    pub fn new(conf: LuxuryCheckConfig, db_client: Arc<Pool<Postgres>>, script: String) -> Self {
+    pub fn new(name: String, db_client: Arc<Pool<Postgres>>, script: String) -> Self {
         LuxuryCheck {
-            name: conf.name,
+            name,
             script,
             db_client,
             handle: tokio::runtime::Handle::current(),

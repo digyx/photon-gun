@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with(filter)
         .init();
 
-    let conf = config::load_config_file(cli_args.config_path);
+    let conf = config::load_config_file(&cli_args.config_path);
     let pool = PgPoolOptions::new()
         .min_connections(conf.postgres.min_connections)
         .max_connections(conf.postgres.max_connections)
@@ -74,9 +74,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
-        let lua_script = fs::read_to_string(&format!("example/scripts/{}", service.script_path))?;
+        let script_path = match service.script_path.starts_with('/') {
+            true => service.script_path,
+            false => format!("{}/scripts/{}", &cli_args.config_path, &service.script_path),
+        };
+
+        let lua_script = fs::read_to_string(&script_path)?;
         let luxury_check_arc = Arc::new(healthcheck::LuxuryCheck::new(
-            service, db_client, lua_script,
+            service.name, db_client, lua_script,
         ));
 
         let task = tokio::task::spawn(async move {

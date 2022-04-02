@@ -1,19 +1,10 @@
 use std::sync::Arc;
 
-use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
 use crate::db;
-
-#[derive(Debug, Deserialize)]
-pub struct BasicCheckConfig {
-    pub name: String,
-    // HTTP URL the check will send a GET request to
-    pub endpoint: String,
-    // Length of time in seconds between checks starting
-    pub interval: u64,
-}
+use crate::config::BasicCheckConfig;
 
 #[derive(Debug)]
 pub struct BasicCheck {
@@ -40,7 +31,7 @@ impl BasicCheck {
         // Reqwest Error............String representation of error
         // Status Code is not 2xx...String representation of status code (ex. "404 Not Found")
         // Status Code is 2xx.......Empty string
-        let res = match self.ping().await {
+        let res = match self.run().await {
             Ok(_) => {
                 info!(%self.name, status = "pass");
                 (true, String::new())
@@ -57,7 +48,7 @@ impl BasicCheck {
         }
     }
 
-    async fn ping(&self) -> Result<(), String> {
+    async fn run(&self) -> Result<(), String> {
         let res = match self.http_client.get(&self.endpoint).send().await {
             Ok(res) => res,
             Err(err) => return Err(err.to_string()),
