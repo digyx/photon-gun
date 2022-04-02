@@ -8,8 +8,12 @@ use tracing::{debug, error, info};
 #[clap(author,version,about,long_about = None)]
 pub struct CliArgs {
     /// Filepath to Config File
-    #[clap(short, long, default_value = "/etc/photon-gun/conf.yml")]
+    #[clap(long = "conf", default_value = "/etc/photon-gun/conf.yml")]
     pub config_path: String,
+
+    /// Filepath to the directory scripts with relative paths use (does not end in "/")
+    #[clap(long = "scripts", default_value = "/etc/photon-gun/scripts")]
+    pub script_dir: String,
 
     /// Logging level (error, warn, info, debug, trace)
     #[clap(short, long, default_value = "info")]

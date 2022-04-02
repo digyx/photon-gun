@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc, time::Duration};
 
 use sqlx::postgres::PgPoolOptions;
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::{debug, info, Level};
+use tracing::{debug, error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
 
 mod config;
@@ -50,22 +50,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // time.  This does mean checks can overlap if execution takes too long
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
-        let basic_check = healthcheck::BasicCheck::new(service, db_client);
+        let basic_check_arc = Arc::new(healthcheck::BasicCheck::new(service, db_client));
 
         let task = tokio::task::spawn(async move {
-            debug!(?basic_check);
+            debug!(?basic_check_arc);
 
             loop {
                 // Tik tok
                 // Initial call is passed through immediately
                 interval.tick().await;
-                basic_check.spawn().await;
+                let basic_check = basic_check_arc.clone();
+
+                // This is done so checks will kick off every second instead of being
+                tokio::task::spawn(async move {
+                    basic_check.spawn().await;
+                });
             }
         });
 
         handlers.push(task);
     }
 
+    // The majority of this logic is the same as the basic check, so I'll only elaborate on the
+    // stuff unique to this loop
     for service in conf.luxury_checks {
         info!(%service.name, msg = "starting luxury check...");
 
@@ -74,14 +81,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
+        // Script paths can be relative to the config dir; absolute paths always start with '/'
         let script_path = match service.script_path.starts_with('/') {
             true => service.script_path,
-            false => format!("{}/scripts/{}", &cli_args.config_path, &service.script_path),
+            // ex. /etc/photon-gun/scripts/script.lua
+            // ex. examples/scripts/script.lua
+            false => format!("{}/{}", &cli_args.script_dir, &service.script_path),
         };
 
-        let lua_script = fs::read_to_string(&script_path)?;
+        // If a lua script can't be read in, then the check needs to fail immediately
+        let lua_script = match fs::read_to_string(&script_path) {
+            Ok(contents) => contents,
+            Err(err) => {
+                error!(%service.name, %err, %script_path, msg = "FAILED TO START HEALTHCHECK");
+                // We don't want to crash the entire program, though, so continue the loop
+                continue;
+            }
+        };
+
         let luxury_check_arc = Arc::new(healthcheck::LuxuryCheck::new(
-            service.name, db_client, lua_script,
+            service.name,
+            db_client,
+            lua_script,
         ));
 
         let task = tokio::task::spawn(async move {
@@ -91,6 +112,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 interval.tick().await;
                 let luxury_check = luxury_check_arc.clone();
 
+                // Lua does not play well with async-await
                 tokio::task::spawn_blocking(move || {
                     luxury_check.spawn();
                 });

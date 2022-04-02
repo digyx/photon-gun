@@ -1,10 +1,11 @@
 use std::sync::Arc;
+use std::time;
 
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
-use crate::db;
 use crate::config::BasicCheckConfig;
+use crate::db;
 
 #[derive(Debug)]
 pub struct BasicCheck {
@@ -25,6 +26,7 @@ impl BasicCheck {
     }
 
     pub async fn spawn(&self) {
+        let start_time = time::SystemTime::now();
         // Checks will count ALL errors as a failed healthcheck and the messages saved to
         // Postgres and logged via tracing
         //
@@ -42,9 +44,11 @@ impl BasicCheck {
             }
         };
 
+        let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
+
         // Save result in postgres
-        if let Err(err) = db::record_healthcheck(&self.db_client, &self.name, res.0, &res.1).await {
-            error!(%self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
+        if let Err(err) = db::record_healthcheck(&self.db_client, result).await {
+            error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
 

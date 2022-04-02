@@ -1,7 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use sqlx::postgres;
 use tracing::debug;
+
+use crate::healthcheck;
 
 pub async fn create_healthcheck_table(
     pool: &postgres::PgPool,
@@ -11,8 +11,9 @@ pub async fn create_healthcheck_table(
         "
         CREATE TABLE IF NOT EXISTS {} (
             id      SERIAL PRIMARY KEY,
-            time    BIGINT NOT NULL UNIQUE,
-            pass    BOOL   NOT NULL,
+            start_time   TIMESTAMP NOT NULL,
+            elapsed_time INTERVAL  NOT NULL,
+            pass    BOOL NOT NULL,
             message TEXT
         )
     ",
@@ -26,23 +27,19 @@ pub async fn create_healthcheck_table(
 
 pub async fn record_healthcheck(
     pool: &postgres::PgPool,
-    table_name: &str,
-    pass: bool,
-    message: &str,
+    check: healthcheck::HealthcheckResult,
 ) -> Result<(), sqlx::Error> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
     let sql_query = format!(
-        "INSERT INTO {} (time, pass, message) VALUES ($1, $2, $3)",
-        table_name
+        "INSERT INTO {} (start_time, elapsed_time, pass, message) VALUES (To_Timestamp($1), $2::interval, $3, $4)",
+        check.table_name
     );
     let result = sqlx::query(&sql_query)
-        .bind(now)
-        .bind(pass)
-        .bind(message)
+        // To_Timestamp takes type "double precision", aka. Rust f64
+        .bind(check.start_time)
+        // Since elapsed_time is passed as a string, we specify the type
+        .bind(check.elapsed_time)
+        .bind(check.pass)
+        .bind(check.message)
         .execute(pool)
         .await?;
 

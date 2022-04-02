@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc, time};
 
 use rlua::StdLib;
 use sqlx::{Pool, Postgres};
@@ -29,6 +29,7 @@ impl LuxuryCheck {
     // core, imperative shell" principle.  Am I being idealisitc?  Maybe, but the library is small
     // enough for me to be so.
     pub fn spawn(&self) {
+        let start_time = time::SystemTime::now();
         let res = match self.run() {
             Ok(msg) => {
                 info!(%self.name, status = "pass", %msg);
@@ -40,12 +41,13 @@ impl LuxuryCheck {
             }
         };
 
-        let table_name = self.name.clone();
         let db_client = self.db_client.clone();
+        let table_name = self.name.clone();
+        let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
 
         self.handle.spawn(async move {
             if let Err(err) =
-                db::record_healthcheck(&db_client, &table_name, res.0, &res.1).await
+                db::record_healthcheck(&db_client, result).await
             {
                 error!(service.name = %table_name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
             }
@@ -55,6 +57,8 @@ impl LuxuryCheck {
     fn run(&self) -> Result<String, String> {
         let lua = rlua::Lua::new();
 
+        // These libs are tentatively chosen.  Lua scripts should not have access to the underlying
+        // system unless absolutely necessary, so those stdlibs are not loaded
         lua.load_from_std_lib(StdLib::BASE).unwrap();
         lua.load_from_std_lib(StdLib::TABLE).unwrap();
         lua.load_from_std_lib(StdLib::STRING).unwrap();
