@@ -1,5 +1,5 @@
-use sqlx::postgres;
-use tracing::debug;
+use sqlx::{postgres, types::chrono};
+use tracing::{debug, info};
 
 use crate::healthcheck;
 

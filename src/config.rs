@@ -16,8 +16,12 @@ pub struct CliArgs {
     pub script_dir: String,
 
     /// Logging level (error, warn, info, debug, trace)
-    #[clap(short, long, default_value = "info")]
+    #[clap(long = "log", default_value = "info")]
     pub logging_level: tracing::Level,
+
+    /// Enable embedded webserver for clients to request JSON repsentations of the healthchecks
+    #[clap(short = 's', long = "server")]
+    pub enable_webserver: bool,
 }
 
 pub fn load_cli_args() -> CliArgs {

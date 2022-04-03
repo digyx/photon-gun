@@ -9,10 +9,14 @@ basic_checks:
     interval: 1
 
   - name: vorona
-    endpoint: "https://vorona.gg"
+    endpoint: "https://vorona.gg/healthcheck"
     interval: 1
 
 luxury_checks:
   - name: test
     script: "test.lua"
     interval: 5
+
+  - name: random
+    script: "random.lua"
+    interval: 1

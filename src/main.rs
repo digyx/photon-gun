@@ -1,7 +1,11 @@
+use std::convert::Infallible;
 use std::fs;
+use std::net::SocketAddr;
 use std::{error::Error, sync::Arc, time::Duration};
 
-use sqlx::postgres::PgPoolOptions;
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use sqlx::postgres::{self, PgPoolOptions};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
@@ -9,6 +13,7 @@ use tracing_subscriber::{filter, prelude::*};
 mod config;
 mod db;
 mod healthcheck;
+mod webserver;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -33,6 +38,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .connect(&conf.postgres.uri)
         .await?;
     let pool_arc = Arc::new(pool);
+
+    if cli_args.enable_webserver {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+        let db_client = pool_arc.clone();
+        let hyper_service = service_fn(move |req| webserver_handler(req, db_client.clone()));
+
+        let service = make_service_fn(move |_conn| {
+            let hyper_service = hyper_service.clone();
+            async move { Ok::<_, Infallible>(hyper_service.clone()) }
+        });
+
+        tokio::task::spawn(async move {
+            let server = Server::bind(&addr).serve(service);
+            info!("Listening on http://{}", addr);
+
+            if let Err(err) = server.await {
+                error!(%err, msg = "WEBSERVER CRASH.");
+                panic!("{}", err);
+            }
+        });
+    }
 
     // Spin off basic check off into its own Tokio task
     // We save the handlers for aborting later, if necessary
@@ -138,4 +164,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     info!(msg = "Tasks stopped.");
     Ok(())
+}
+
+async fn webserver_handler(
+    req: Request<Body>,
+    db_client: Arc<postgres::PgPool>,
+) -> Result<Response<Body>, Infallible> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/") => Ok(Response::new(Body::from("Pew pew"))),
+        (&Method::GET, "/healthcheck") => Ok(Response::new(Body::from("Ok"))),
+        (&Method::GET, "/summary") => Ok(webserver::summary(req, &db_client).await),
+        _ => {
+            let res = Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("404 - Page Not Found"))
+                .unwrap();
+            Ok(res)
+        }
+    }
 }
