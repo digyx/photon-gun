@@ -1,7 +1,7 @@
 [package]
 name = "photon-gun"
 authors = ["Devon Tingley <dtingley@twilit.io>"]
-description = "Basic and Lua-Scriptable HTTP Monitor."
+description = "Lua-Scriptable HTTP Monitor."
 license = "MIT"
 version = "0.1.0"
 edition = "2021"
@@ -10,17 +10,18 @@ edition = "2021"
 rlua = "0.19.1"
 
 tokio = {version = "1.17.0", features = ["rt","time","macros","signal"] }
+hyper = { version = "0.14.18", features = ["http1","http2","client","server","tcp"] }
 reqwest = { version = "0.11.10", features = ["blocking"] }
 tracing = "0.1.32"
 tracing-subscriber = "0.3.9"
 
-clap = { version = "3.1.6", features = ["derive"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_yaml = "0.8.23"
-sqlx = { version = "0.5.11", features = ["postgres","runtime-tokio-rustls","chrono"] }
-hyper = { version = "0.14.18", features = ["http1", "http2", "client", "server", "tcp"] }
 serde_qs = "0.9.1"
 serde_json = "1.0.79"
+
+clap = { version = "3.1.6", features = ["derive"] }
+sqlx = { version = "0.5.11", features = ["postgres","runtime-tokio-rustls","chrono"] }
 
 [profile.release]
 lto = true

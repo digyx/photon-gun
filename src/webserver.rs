@@ -1,5 +1,5 @@
 use hyper::{Body, Request, Response, StatusCode};
-use serde::{Deserialize, Serialize, ser::SerializeStruct};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::{postgres, types::chrono, FromRow};
 use tracing::error;
 
@@ -9,7 +9,7 @@ struct SummaryQueries {
     resolution: Option<String>,
 }
 
-#[derive(Debug,FromRow)]
+#[derive(Debug, FromRow)]
 struct HealthcheckSummary {
     time_window: chrono::NaiveDateTime,
     pass: i64,
@@ -19,7 +19,8 @@ struct HealthcheckSummary {
 impl Serialize for HealthcheckSummary {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-            S: serde::Serializer {
+        S: serde::Serializer,
+    {
         let mut s = serializer.serialize_struct("HealthcheckSummary", 3)?;
         s.serialize_field("time_window", &self.time_window.to_string())?;
         s.serialize_field("pass", &self.pass)?;
