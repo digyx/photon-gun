@@ -67,16 +67,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         info!(%service.name, msg = "starting basic check...");
 
         // Increment the RC on the PgPool ARC to deal with the move
-        let db_client = pool_arc.clone();
+        let db_client_arc = pool_arc.clone();
         // Create the database table for the basic check
         // Every basic check gets its own table
-        db::create_healthcheck_table(&db_client, &service.name).await?;
+        db::create_healthcheck_table(&db_client_arc, &service.name).await?;
 
         // Ensures that the tasks runs every two seconds without being affected by the execution
         // time.  This does mean checks can overlap if execution takes too long
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
-        let basic_check_arc = Arc::new(healthcheck::BasicCheck::new(service, db_client));
+        let basic_check_arc = Arc::new(healthcheck::BasicCheck::new(service));
 
         let task = tokio::task::spawn(async move {
             debug!(?basic_check_arc);
@@ -86,10 +86,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Initial call is passed through immediately
                 interval.tick().await;
                 let basic_check = basic_check_arc.clone();
+                let db_client = db_client_arc.clone();
 
                 // This is done so checks will kick off every second instead of being
                 tokio::task::spawn(async move {
-                    basic_check.spawn().await;
+                    basic_check.spawn(db_client.clone()).await;
                 });
             }
         });

@@ -63,7 +63,7 @@ pub async fn summary(req: Request<Body>, db_client: &postgres::PgPool) -> Respon
         ORDER BY time_window DESC
         LIMIT 60
     ",
-        queries.resolution.unwrap_or("minute".into()),
+        queries.resolution.unwrap_or_else(|| "minute".into()),
         queries.service_name,
     );
 

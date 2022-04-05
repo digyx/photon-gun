@@ -11,21 +11,19 @@ use crate::db;
 pub struct BasicCheck {
     name: String,
     endpoint: String,
-    db_client: Arc<Pool<Postgres>>,
     http_client: reqwest::Client,
 }
 
 impl BasicCheck {
-    pub fn new(conf: BasicCheckConfig, db_client: Arc<Pool<Postgres>>) -> Self {
+    pub fn new(conf: BasicCheckConfig) -> Self {
         BasicCheck {
             name: conf.name,
             endpoint: conf.endpoint,
-            db_client,
             http_client: reqwest::Client::new(),
         }
     }
 
-    pub async fn spawn(&self) {
+    pub async fn spawn(&self, db_client: Arc<Pool<Postgres>>) {
         let start_time = time::SystemTime::now();
         // Checks will count ALL errors as a failed healthcheck and the messages saved to
         // Postgres and logged via tracing
@@ -47,7 +45,7 @@ impl BasicCheck {
         let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
 
         // Save result in postgres
-        if let Err(err) = db::record_healthcheck(&self.db_client, result).await {
+        if let Err(err) = db::record_healthcheck(&db_client, result).await {
             error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
@@ -67,5 +65,68 @@ impl BasicCheck {
         debug!(?res);
         debug!(%self.endpoint, status = "pass");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hyper::StatusCode;
+    use wiremock::{MockServer, Mock, matchers::{method, path}, ResponseTemplate};
+
+    use super::BasicCheck;
+
+    #[tokio::test]
+    async fn success() {
+        let mock_webserver = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthcheck"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_webserver)
+            .await;
+
+        let check = BasicCheck{
+            name: "test".into(),
+            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            http_client: reqwest::Client::new(),
+        };
+
+        check.run().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fail_404() {
+        let mock_webserver = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthcheck"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_webserver)
+            .await;
+
+        let check = BasicCheck{
+            name: "test".into(),
+            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            http_client: reqwest::Client::new(),
+        };
+
+        let res = check.run().await.unwrap_err();
+        assert_eq!(StatusCode::NOT_FOUND.to_string(), res);
+    }
+    #[tokio::test]
+    async fn fail_500() {
+        let mock_webserver = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthcheck"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_webserver)
+            .await;
+
+        let check = BasicCheck{
+            name: "test".into(),
+            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            http_client: reqwest::Client::new(),
+        };
+
+        let res = check.run().await.unwrap_err();
+        assert_eq!(String::from(StatusCode::INTERNAL_SERVER_ERROR.to_string()), res);
     }
 }
