@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 
 use clap::Parser;
@@ -98,7 +99,7 @@ pub fn load_config_file(path: &str) -> ConfigFile {
         }
     };
 
-    match serde_yaml::from_str(contents.as_str()) {
+    let conf: ConfigFile = match serde_yaml::from_str(contents.as_str()) {
         Ok(res) => {
             info!(msg = "config loaded from yaml string");
             res
@@ -107,7 +108,35 @@ pub fn load_config_file(path: &str) -> ConfigFile {
             error!(error = %err);
             panic!("{err}")
         }
+    };
+
+    // This next bit is to ensure that there are no duplicate service names
+    //
+    // Combine all service names into one iterator
+    let service_name_vec = conf
+        .basic_checks
+        .iter()
+        .map(|check| check.name.as_str())
+        .chain(conf.luxury_checks.iter().map(|check| check.name.as_str()));
+
+    // cmp is used for storing already seen service names
+    let mut cmp: HashMap<&str, bool> = HashMap::new();
+    let mut duplicate_service_names = false;
+
+    // Insert name into a hashmap and if an update occurs (returning Some) then mark that there are
+    // duplicates and log the error to console
+    service_name_vec.for_each(|name| {
+        if cmp.insert(name, true).is_some() {
+            error!("duplicate service name: {}", name);
+            duplicate_service_names = true;
+        }
+    });
+
+    if duplicate_service_names {
+        panic!("invalid config: duplicate service names");
     }
+
+    conf
 }
 
 #[cfg(test)]
@@ -115,8 +144,8 @@ mod tests {
     use super::*;
 
     #[test]
-    // This exists to check that none of the example configs ever get stale
-    fn check_example_configs() {
+    // These exist to check that none of the example configs ever get stale
+    fn check_example_conf_yml() {
         let expected = ConfigFile {
             postgres: PostgresSettings {
                 uri: "postgres://postgres:password@localhost:5432/photon-gun".into(),
@@ -151,5 +180,11 @@ mod tests {
         let conf = load_config_file("example/config.yml");
 
         assert_eq!(expected, conf);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid config: duplicate service names")]
+    fn check_example_fail_duplicate_names_yml() {
+        load_config_file("example/test_duplicate_names.yml");
     }
 }

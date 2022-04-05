@@ -1,0 +1,11 @@
+postgres:
+  uri: "postgres://localhost/photon-gun"
+
+basic_checks:
+  - name: test
+    endpoint: "https://example.com/"
+    interval: 1
+
+  - name: test
+    endpoint: "https://example.com/"
+    interval: 1
