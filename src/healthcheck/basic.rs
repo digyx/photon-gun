@@ -72,10 +72,13 @@ impl BasicCheck {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use hyper::StatusCode;
     use sqlx::PgPool;
-    use wiremock::{MockServer, Mock, matchers::{method, path}, ResponseTemplate};
+    use std::sync::Arc;
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
 
     use super::BasicCheck;
 
@@ -88,7 +91,7 @@ mod tests {
             .mount(&mock_webserver)
             .await;
 
-        let check = BasicCheck{
+        let check = BasicCheck {
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
             // Since we don't use the DB in these tests, we can just lazy connect to any URI
@@ -108,7 +111,7 @@ mod tests {
             .mount(&mock_webserver)
             .await;
 
-        let check = BasicCheck{
+        let check = BasicCheck {
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
             db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
@@ -127,7 +130,7 @@ mod tests {
             .mount(&mock_webserver)
             .await;
 
-        let check = BasicCheck{
+        let check = BasicCheck {
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
             db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
@@ -135,6 +138,9 @@ mod tests {
         };
 
         let res = check.run().await.unwrap_err();
-        assert_eq!(String::from(StatusCode::INTERNAL_SERVER_ERROR.to_string()), res);
+        assert_eq!(
+            String::from(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+            res
+        );
     }
 }

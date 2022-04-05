@@ -30,7 +30,7 @@ pub fn load_cli_args() -> CliArgs {
 
 // ==================== Config File ====================
 // TODO: Expand config file (not sure what it all needs yet)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ConfigFile {
     pub postgres: PostgresSettings,
     #[serde(default = "no_basic_checks")]
@@ -47,7 +47,7 @@ fn no_luxurious_checks() -> Vec<LuxuryCheckConfig> {
     vec![]
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct PostgresSettings {
     pub uri: String,
     #[serde(default = "default_min_connections")]
@@ -64,7 +64,7 @@ fn default_min_connections() -> u32 {
     1
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct BasicCheckConfig {
     pub name: String,
     // HTTP URL the check will send a GET request to
@@ -73,7 +73,7 @@ pub struct BasicCheckConfig {
     pub interval: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct LuxuryCheckConfig {
     pub name: String,
     // Path to Lua script to be ran for the check
@@ -107,5 +107,49 @@ pub fn load_config_file(path: &str) -> ConfigFile {
             error!(error = %err);
             panic!("{err}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    // This exists to check that none of the example configs ever get stale
+    fn check_example_configs() {
+        let expected = ConfigFile {
+            postgres: PostgresSettings {
+                uri: "postgres://postgres:password@localhost:5432/photon-gun".into(),
+                min_connections: 1,
+                max_connections: 5,
+            },
+            basic_checks: vec![
+                BasicCheckConfig {
+                    name: "google".into(),
+                    endpoint: "https://google.com".into(),
+                    interval: 1,
+                },
+                BasicCheckConfig {
+                    name: "vorona".into(),
+                    endpoint: "https://vorona.gg/healthcheck".into(),
+                    interval: 1,
+                },
+            ],
+            luxury_checks: vec![
+                LuxuryCheckConfig {
+                    name: "test".into(),
+                    script_path: "test.lua".into(),
+                    interval: 5,
+                },
+                LuxuryCheckConfig {
+                    name: "random".into(),
+                    script_path: "random.lua".into(),
+                    interval: 1,
+                },
+            ],
+        };
+        let conf = load_config_file("example/config.yml");
+
+        assert_eq!(expected, conf);
     }
 }
