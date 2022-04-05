@@ -9,7 +9,7 @@ pub use self::basic::BasicCheck;
 pub use self::luxury::LuxuryCheck;
 
 pub struct HealthcheckResult {
-    pub table_name: String,
+    pub service_name: String,
     pub pass: bool,
     pub message: String,
     pub start_time: f64,
@@ -18,7 +18,7 @@ pub struct HealthcheckResult {
 
 impl HealthcheckResult {
     pub fn new(
-        table_name: &str,
+        service_name: &str,
         pass: bool,
         message: String,
         start_time: time::SystemTime,
@@ -29,13 +29,13 @@ impl HealthcheckResult {
         let elapsed_time = match start_time.elapsed() {
             Ok(res) => res,
             Err(err) => {
-                error!(service.name = %table_name, %err, msg = "TIME MOVED BACKWARDS; CLAMPING TO ZERO");
+                error!(service.name = %service_name, %err, msg = "TIME MOVED BACKWARDS; CLAMPING TO ZERO");
                 time::Duration::ZERO
             }
         };
 
         HealthcheckResult {
-            table_name: table_name.into(),
+            service_name: service_name.into(),
             pass,
             message,
             // Postgres's To_Timestamp function takes type "double precision"

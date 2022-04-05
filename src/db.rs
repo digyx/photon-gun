@@ -3,9 +3,13 @@ use tracing::debug;
 
 use crate::healthcheck;
 
+fn get_table_name(given: &str) -> String {
+    format!("check_{}", base64::encode_config(given, base64::URL_SAFE))
+}
+
 pub async fn create_healthcheck_table(
     pool: &postgres::PgPool,
-    table_name: &str,
+    service_name: &str,
 ) -> Result<(), sqlx::Error> {
     let sql_query = format!(
         "
@@ -17,7 +21,7 @@ pub async fn create_healthcheck_table(
             message TEXT
         )
     ",
-        table_name
+        get_table_name(service_name)
     );
     let result = sqlx::query(&sql_query).execute(pool).await?;
 
@@ -31,7 +35,7 @@ pub async fn record_healthcheck(
 ) -> Result<(), sqlx::Error> {
     let sql_query = format!(
         "INSERT INTO {} (start_time, elapsed_time, pass, message) VALUES (To_Timestamp($1), $2::interval, $3, $4)",
-        check.table_name
+        get_table_name(&check.service_name),
     );
     let result = sqlx::query(&sql_query)
         // To_Timestamp takes type "double precision", aka. Rust f64
@@ -43,6 +47,17 @@ pub async fn record_healthcheck(
         .execute(pool)
         .await?;
 
-    debug!(result.rows_affects = result.rows_affected());
+    debug!(result.rows_affected = result.rows_affected());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn get_table_name() {
+        let expected = "check_dm9yb25h";
+        let res = super::get_table_name("vorona");
+
+        assert_eq!(res, expected);
+    }
 }
