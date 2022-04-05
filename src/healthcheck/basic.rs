@@ -11,19 +11,21 @@ use crate::db;
 pub struct BasicCheck {
     name: String,
     endpoint: String,
+    db_client: Arc<Pool<Postgres>>,
     http_client: reqwest::Client,
 }
 
 impl BasicCheck {
-    pub fn new(conf: BasicCheckConfig) -> Self {
+    pub fn new(conf: BasicCheckConfig, db_client: Arc<Pool<Postgres>>) -> Self {
         BasicCheck {
             name: conf.name,
             endpoint: conf.endpoint,
+            db_client,
             http_client: reqwest::Client::new(),
         }
     }
 
-    pub async fn spawn(&self, db_client: Arc<Pool<Postgres>>) {
+    pub async fn spawn(&self) {
         let start_time = time::SystemTime::now();
         // Checks will count ALL errors as a failed healthcheck and the messages saved to
         // Postgres and logged via tracing
@@ -45,7 +47,7 @@ impl BasicCheck {
         let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
 
         // Save result in postgres
-        if let Err(err) = db::record_healthcheck(&db_client, result).await {
+        if let Err(err) = db::record_healthcheck(&self.db_client, result).await {
             error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
@@ -70,7 +72,9 @@ impl BasicCheck {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use hyper::StatusCode;
+    use sqlx::PgPool;
     use wiremock::{MockServer, Mock, matchers::{method, path}, ResponseTemplate};
 
     use super::BasicCheck;
@@ -87,6 +91,8 @@ mod tests {
         let check = BasicCheck{
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            // Since we don't use the DB in these tests, we can just lazy connect to any URI
+            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
             http_client: reqwest::Client::new(),
         };
 
@@ -105,6 +111,7 @@ mod tests {
         let check = BasicCheck{
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
             http_client: reqwest::Client::new(),
         };
 
@@ -123,6 +130,7 @@ mod tests {
         let check = BasicCheck{
             name: "test".into(),
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
             http_client: reqwest::Client::new(),
         };
 
