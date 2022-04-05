@@ -146,3 +146,94 @@ fn http_post(
 ) -> Result<(u16, String), rlua::Error> {
     http_request(ctx, (url, body, "POST".into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use sqlx::PgPool;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    async fn setup_http_get_test(script_path: &str, status_code: u16) -> (MockServer, LuxuryCheck) {
+        let mock_webserver = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthcheck"))
+            .respond_with(ResponseTemplate::new(status_code))
+            .mount(&mock_webserver)
+            .await;
+
+        let script = fs::read_to_string(script_path).unwrap();
+        let check = LuxuryCheck {
+            name: "test".into(),
+            script: script.replace("WIREMOCK_URI", &mock_webserver.uri()),
+            // Since we don't use the DB in these tests, we can just lazy connect to any URI
+            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
+            handle: tokio::runtime::Handle::current(),
+        };
+
+        (mock_webserver, check)
+    }
+
+    #[tokio::test]
+    async fn success_http_get() {
+        let (_mock_webserver, check) =
+            setup_http_get_test("example/scripts/test_http_get.lua", 200).await;
+
+        tokio::runtime::Handle::current()
+            .spawn_blocking(move || {
+                assert!(check.run().is_ok());
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn fail_http_get() {
+        let (_mock_webserver, check) =
+            setup_http_get_test("example/scripts/test_http_get.lua", 404).await;
+
+        tokio::runtime::Handle::current()
+            .spawn_blocking(move || {
+                assert!(check.run().is_err());
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn success_http_get_with_msg() {
+        let (_mock_webserver, check) =
+            setup_http_get_test("example/scripts/test_http_get.lua", 200).await;
+
+        tokio::runtime::Handle::current()
+            .spawn_blocking(move || {
+                assert_eq!("Alles gut", check.run().unwrap());
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn fail_http_get_with_msg() {
+        let (_mock_webserver, check) =
+            setup_http_get_test("example/scripts/test_http_get.lua", 404).await;
+
+        tokio::runtime::Handle::current()
+            .spawn_blocking(move || {
+                assert_eq!(
+                    "\
+                    runtime error: This failed\
+                    \nstack traceback:\
+                    \n\t[C]: in ?\
+                    \n\t[C]: in function 'error'\
+                    \n\t[string \"?\"]:7: in main chunk",
+                    check.run().unwrap_err()
+                );
+            })
+            .await
+            .unwrap();
+    }
+}

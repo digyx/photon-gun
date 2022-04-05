@@ -75,10 +75,8 @@ mod tests {
     use hyper::StatusCode;
     use sqlx::PgPool;
     use std::sync::Arc;
-    use wiremock::{
-        matchers::{method, path},
-        Mock, MockServer, ResponseTemplate,
-    };
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::BasicCheck;
 
@@ -121,6 +119,7 @@ mod tests {
         let res = check.run().await.unwrap_err();
         assert_eq!(StatusCode::NOT_FOUND.to_string(), res);
     }
+
     #[tokio::test]
     async fn fail_500() {
         let mock_webserver = MockServer::start().await;
