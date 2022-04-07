@@ -47,7 +47,7 @@ impl LuxuryCheck {
 
         self.handle.spawn(async move {
             if let Err(err) =
-                db::record_healthcheck(&db_client, result).await
+                db::record_healthcheck(&*db_client, result).await
             {
                 error!(service.name = %table_name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
             }

@@ -4,8 +4,8 @@ use std::net::SocketAddr;
 use std::{error::Error, sync::Arc, time::Duration};
 
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use sqlx::postgres::{self, PgPoolOptions};
+use hyper::Server;
+use sqlx::postgres::PgPoolOptions;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if cli_args.enable_webserver {
         let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
         let db_client = pool_arc.clone();
-        let hyper_service = service_fn(move |req| webserver_handler(req, db_client.clone()));
+        let hyper_service = service_fn(move |req| webserver::handler(req, db_client.clone()));
 
         let service = make_service_fn(move |_conn| {
             let hyper_service = hyper_service.clone();
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         // Create the database table for the basic check
         // Every basic check gets its own table
-        db::create_healthcheck_table(&pool_arc.clone(), &service.name).await?;
+        db::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
 
         // Ensures that the tasks runs every two seconds without being affected by the execution
         // time.  This does mean checks can overlap if execution takes too long
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for service in conf.luxury_checks {
         info!(%service.name, msg = "starting luxury check...");
 
-        db::create_healthcheck_table(&pool_arc.clone(), &service.name).await?;
+        db::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
 
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
@@ -161,22 +161,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     info!(msg = "Tasks stopped.");
     Ok(())
-}
-
-async fn webserver_handler(
-    req: Request<Body>,
-    db_client: Arc<postgres::PgPool>,
-) -> Result<Response<Body>, Infallible> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => Ok(Response::new(Body::from("Pew pew"))),
-        (&Method::GET, "/healthcheck") => Ok(Response::new(Body::from("Ok"))),
-        (&Method::GET, "/summary") => Ok(webserver::summary(req, &db_client).await),
-        _ => {
-            let res = Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("404 - Page Not Found"))
-                .unwrap();
-            Ok(res)
-        }
-    }
 }

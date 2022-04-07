@@ -1,4 +1,4 @@
-use sqlx::postgres;
+use sqlx::PgExecutor;
 use tracing::debug;
 
 use crate::healthcheck;
@@ -7,10 +7,10 @@ fn get_table_name(given: &str) -> String {
     format!("check_{}", base64::encode_config(given, base64::URL_SAFE))
 }
 
-pub async fn create_healthcheck_table(
-    pool: &postgres::PgPool,
-    service_name: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn create_healthcheck_table<'a, E>(pool: E, service_name: &str) -> Result<(), sqlx::Error>
+where
+    E: PgExecutor<'a>,
+{
     let sql_query = format!(
         "
         CREATE TABLE IF NOT EXISTS {} (
@@ -29,10 +29,13 @@ pub async fn create_healthcheck_table(
     Ok(())
 }
 
-pub async fn record_healthcheck(
-    pool: &postgres::PgPool,
+pub async fn record_healthcheck<'a, E>(
+    pool: E,
     check: healthcheck::HealthcheckResult,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), sqlx::Error>
+where
+    E: PgExecutor<'a>,
+{
     let sql_query = format!(
         "INSERT INTO {} (start_time, elapsed_time, pass, message) VALUES (To_Timestamp($1), $2::interval, $3, $4)",
         get_table_name(&check.service_name),
@@ -53,10 +56,12 @@ pub async fn record_healthcheck(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn get_table_name() {
+    fn success_get_table_name() {
         let expected = "check_dm9yb25h";
-        let res = super::get_table_name("vorona");
+        let res = get_table_name("vorona");
 
         assert_eq!(res, expected);
     }

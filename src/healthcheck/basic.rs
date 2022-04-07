@@ -47,7 +47,7 @@ impl BasicCheck {
         let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
 
         // Save result in postgres
-        if let Err(err) = db::record_healthcheck(&self.db_client, result).await {
+        if let Err(err) = db::record_healthcheck(&*self.db_client, result).await {
             error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
@@ -83,30 +83,24 @@ mod tests {
     #[tokio::test]
     async fn create_basic_check() {
         let db_client = Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap());
-        let test_cases = vec![
-            (
-                BasicCheckConfig{
-                    name: "test".into(),
-                    endpoint: "https://test.com".into(),
-                    interval: 5,
-                },
-                BasicCheck{
-                    name: "test".into(),
-                    endpoint: "https://test.com".into(),
-                    db_client: db_client.clone(),
-                    http_client: reqwest::Client::new(),
-                },
-            )
-        ];
+        let input = BasicCheckConfig {
+            name: "test".into(),
+            endpoint: "https://test.com".into(),
+            interval: 5,
+        };
+        let expected = BasicCheck {
+            name: "test".into(),
+            endpoint: "https://test.com".into(),
+            db_client: db_client.clone(),
+            http_client: reqwest::Client::new(),
+        };
 
-        for (input, expected) in test_cases {
-            let res = BasicCheck::new(input, db_client.clone());
-            assert_eq!(res.name, expected.name);
-            assert_eq!(res.endpoint, expected.endpoint);
-        }
+        let res = BasicCheck::new(input, db_client.clone());
+        assert_eq!(res.name, expected.name);
+        assert_eq!(res.endpoint, expected.endpoint);
     }
 
-    async fn run_test(status_code: u16) -> Result<(), String> {
+    async fn test_basic_check_run(status_code: u16) -> Result<(), String> {
         let mock_webserver = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/healthcheck"))
@@ -126,14 +120,10 @@ mod tests {
 
     #[tokio::test]
     async fn success() {
-        let test_cases = vec![
-            200,
-            201,
-            202,
-        ];
+        let test_cases = vec![200, 201, 202];
 
         for status_code in test_cases {
-            run_test(status_code).await.unwrap()
+            test_basic_check_run(status_code).await.unwrap()
         }
     }
 
@@ -147,7 +137,7 @@ mod tests {
         ];
 
         for (status_code, expected) in test_cases {
-            let res = run_test(status_code).await.unwrap_err();
+            let res = test_basic_check_run(status_code).await.unwrap_err();
             assert_eq!(res, expected);
         }
     }
