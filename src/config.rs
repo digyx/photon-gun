@@ -36,7 +36,7 @@ pub struct ConfigFile {
     pub postgres: PostgresSettings,
     #[serde(default = "no_basic_checks")]
     pub basic_checks: Vec<BasicCheckConfig>,
-    #[serde(default = "no_luxurious_checks")]
+    #[serde(default = "no_luxury_checks")]
     pub luxury_checks: Vec<LuxuryCheckConfig>,
 }
 
@@ -44,7 +44,7 @@ fn no_basic_checks() -> Vec<BasicCheckConfig> {
     vec![]
 }
 
-fn no_luxurious_checks() -> Vec<LuxuryCheckConfig> {
+fn no_luxury_checks() -> Vec<LuxuryCheckConfig> {
     vec![]
 }
 
@@ -186,5 +186,14 @@ mod tests {
     #[should_panic(expected = "invalid config: duplicate service names")]
     fn check_example_fail_duplicate_names_yml() {
         load_config_file("example/test_duplicate_names.yml");
+    }
+
+    #[test]
+    // These should absolutely never fail
+    fn default_value_tests() {
+        assert_eq!(5, default_max_connections());
+        assert_eq!(1, default_min_connections());
+        assert!(no_basic_checks().is_empty());
+        assert!(no_luxury_checks().is_empty());
     }
 }
