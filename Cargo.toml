@@ -24,9 +24,9 @@ clap = { version = "3.1.6", features = ["derive"] }
 sqlx = { version = "0.5.11", features = ["postgres","runtime-tokio-rustls","chrono"] }
 base64 = "0.13.0"
 
+[dev-dependencies]
+wiremock = "0.5.12"
+
 [profile.release]
 lto = true
 strip = true
-
-[dev-dependencies]
-wiremock = "0.5.12"

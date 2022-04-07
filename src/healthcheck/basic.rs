@@ -27,8 +27,8 @@ impl BasicCheck {
 
     pub async fn spawn(&self) {
         let start_time = time::SystemTime::now();
-        // Checks will count ALL errors as a failed healthcheck and the messages saved to
-        // Postgres and logged via tracing
+        // Checks will count ALL non-successes as a failed healthcheck and the messages will be
+        // saved to Postgres and logged via tracing
         //
         // Reqwest Error............String representation of error
         // Status Code is not 2xx...String representation of status code (ex. "404 Not Found")
@@ -78,68 +78,77 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::BasicCheck;
+    use super::*;
+
+    #[tokio::test]
+    async fn create_basic_check() {
+        let db_client = Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap());
+        let test_cases = vec![
+            (
+                BasicCheckConfig{
+                    name: "test".into(),
+                    endpoint: "https://test.com".into(),
+                    interval: 5,
+                },
+                BasicCheck{
+                    name: "test".into(),
+                    endpoint: "https://test.com".into(),
+                    db_client: db_client.clone(),
+                    http_client: reqwest::Client::new(),
+                },
+            )
+        ];
+
+        for (input, expected) in test_cases {
+            let res = BasicCheck::new(input, db_client.clone());
+            assert_eq!(res.name, expected.name);
+            assert_eq!(res.endpoint, expected.endpoint);
+        }
+    }
+
+    async fn run_test(status_code: u16) -> Result<(), String> {
+        let mock_webserver = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthcheck"))
+            .respond_with(ResponseTemplate::new(status_code))
+            .mount(&mock_webserver)
+            .await;
+
+        let check = BasicCheck {
+            name: "test".into(),
+            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
+            http_client: reqwest::Client::new(),
+        };
+
+        check.run().await
+    }
 
     #[tokio::test]
     async fn success() {
-        let mock_webserver = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/healthcheck"))
-            .respond_with(ResponseTemplate::new(200))
-            .mount(&mock_webserver)
-            .await;
+        let test_cases = vec![
+            200,
+            201,
+            202,
+        ];
 
-        let check = BasicCheck {
-            name: "test".into(),
-            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
-            // Since we don't use the DB in these tests, we can just lazy connect to any URI
-            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
-            http_client: reqwest::Client::new(),
-        };
-
-        check.run().await.unwrap();
+        for status_code in test_cases {
+            run_test(status_code).await.unwrap()
+        }
     }
 
     #[tokio::test]
-    async fn fail_404() {
-        let mock_webserver = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/healthcheck"))
-            .respond_with(ResponseTemplate::new(404))
-            .mount(&mock_webserver)
-            .await;
+    async fn fail() {
+        let test_cases = vec![
+            (101, StatusCode::SWITCHING_PROTOCOLS.to_string()),
+            (304, StatusCode::NOT_MODIFIED.to_string()),
+            (404, StatusCode::NOT_FOUND.to_string()),
+            (500, StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+        ];
 
-        let check = BasicCheck {
-            name: "test".into(),
-            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
-            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
-            http_client: reqwest::Client::new(),
-        };
-
-        let res = check.run().await.unwrap_err();
-        assert_eq!(StatusCode::NOT_FOUND.to_string(), res);
-    }
-
-    #[tokio::test]
-    async fn fail_500() {
-        let mock_webserver = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/healthcheck"))
-            .respond_with(ResponseTemplate::new(500))
-            .mount(&mock_webserver)
-            .await;
-
-        let check = BasicCheck {
-            name: "test".into(),
-            endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
-            db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
-            http_client: reqwest::Client::new(),
-        };
-
-        let res = check.run().await.unwrap_err();
-        assert_eq!(
-            String::from(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
-            res
-        );
+        for (status_code, expected) in test_cases {
+            let res = run_test(status_code).await.unwrap_err();
+            assert_eq!(res, expected);
+        }
     }
 }
