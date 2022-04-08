@@ -1,7 +1,8 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use hyper::{Body, Method, Request, Response, StatusCode};
+use hyper::{Body, Method, Request, Response, StatusCode, Uri};
+use serde::Deserialize;
 use sqlx::postgres;
 
 mod summary;
@@ -26,4 +27,16 @@ fn response_with_string_body(status: StatusCode, msg: &'static str) -> Response<
         .status(status)
         .body(Body::from(msg))
         .unwrap()
+}
+
+fn decode_url_params<'de, T: Deserialize<'de>>(uri: &'de Uri) -> Result<T, &'static str> {
+    let queries = match uri.query() {
+        Some(val) => val,
+        None => return Err("No parameters passed when 'service' is required."),
+    };
+
+    match serde_qs::from_str(queries) {
+        Ok(val) => Ok(val),
+        Err(_) => Err("Invalid parameters.  Only 'service' (string) and 'resolution' (second,minute,hour,day) are supported.")
+    }
 }

@@ -1,4 +1,4 @@
-use hyper::{Body, Request, Response, StatusCode, Uri};
+use hyper::{Body, Request, Response, StatusCode};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sqlx::types::chrono;
@@ -6,28 +6,28 @@ use sqlx::{FromRow, PgExecutor};
 use tracing::{debug, error};
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
-struct SummaryQueries {
+struct UriQueries {
     #[serde(alias = "service")]
     service_name: String,
-    resolution: Option<SummaryResolution>,
+    resolution: Option<Resolution>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-enum SummaryResolution {
+enum Resolution {
     Second,
     Minute,
     Hour,
     Day,
 }
 
-impl std::fmt::Display for SummaryResolution {
+impl std::fmt::Display for Resolution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let res = match self {
-            SummaryResolution::Second => "second",
-            SummaryResolution::Minute => "minute",
-            SummaryResolution::Hour => "hour",
-            SummaryResolution::Day => "day",
+            Resolution::Second => "second",
+            Resolution::Minute => "minute",
+            Resolution::Hour => "hour",
+            Resolution::Day => "day",
         };
 
         write!(f, "{}", res)
@@ -58,7 +58,7 @@ pub async fn handle<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
 where
     E: PgExecutor<'a>,
 {
-    let queries = match decode_url_params(req.uri()) {
+    let queries: UriQueries = match super::decode_url_params(req.uri()) {
         Ok(queries) => queries,
         Err(err) => {
             debug!(%err, msg = "Invalid URL paramters given.");
@@ -77,7 +77,7 @@ where
         ORDER BY time_window DESC
         LIMIT 60
     ",
-        queries.resolution.unwrap_or(SummaryResolution::Minute),
+        queries.resolution.unwrap_or(Resolution::Minute),
         queries.service_name,
     );
 
@@ -104,27 +104,16 @@ where
     Response::new(Body::from(body))
 }
 
-fn decode_url_params(uri: &Uri) -> Result<SummaryQueries, &'static str> {
-    let queries = match uri.query() {
-        Some(val) => val,
-        None => return Err("No parameters passed when 'service' is required."),
-    };
-
-    match serde_qs::from_str(queries) {
-        Ok(val) => Ok(val),
-        Err(_) => Err("Invalid parameters.  Only 'service' (string) and 'resolution' (second,minute,hour,day) are supported.")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-
     use super::*;
 
-    impl SummaryQueries {
-        fn new(service_name: String, resolution: Option<SummaryResolution>) -> SummaryQueries {
-            SummaryQueries {
+    use hyper::Uri;
+    use rstest::rstest;
+
+    impl UriQueries {
+        fn new(service_name: String, resolution: Option<Resolution>) -> UriQueries {
+            UriQueries {
                 service_name,
                 resolution,
             }
@@ -147,33 +136,33 @@ mod tests {
     #[rstest]
     #[case(
         Uri::try_from("/test?service=test"),
-        SummaryQueries::new("test".into(), None)
+        UriQueries::new("test".into(), None)
     )]
     #[case(
         Uri::try_from("/test?service=vorona"),
-        SummaryQueries::new("vorona".into(), None)
+        UriQueries::new("vorona".into(), None)
     )]
     #[case(
         Uri::try_from("/test?service=test&resolution=second"),
-        SummaryQueries::new("test".into(), Some(SummaryResolution::Second))
+        UriQueries::new("test".into(), Some(Resolution::Second))
     )]
     #[case(
         Uri::try_from("/test?service=test&resolution=minute"),
-        SummaryQueries::new("test".into(), Some(SummaryResolution::Minute))
+        UriQueries::new("test".into(), Some(Resolution::Minute))
     )]
     #[case(
         Uri::try_from("/test?service=test&resolution=hour"),
-        SummaryQueries::new("test".into(), Some(SummaryResolution::Hour))
+        UriQueries::new("test".into(), Some(Resolution::Hour))
     )]
     #[case(
         Uri::try_from("/test?service=test&resolution=day"),
-        SummaryQueries::new("test".into(), Some(SummaryResolution::Day))
+        UriQueries::new("test".into(), Some(Resolution::Day))
     )]
     fn success_decode_url_params(
         #[case] input: Result<Uri, http::uri::InvalidUri>,
-        #[case] expected: SummaryQueries,
+        #[case] expected: UriQueries,
     ) {
-        let res = decode_url_params(&input.unwrap()).unwrap();
+        let res: UriQueries = super::super::decode_url_params(&input.unwrap()).unwrap();
         assert_eq!(res, expected);
     }
 }
