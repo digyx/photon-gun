@@ -5,6 +5,7 @@ use hyper::{Body, Method, Request, Response, StatusCode, Uri};
 use serde::Deserialize;
 use sqlx::postgres;
 
+mod checks;
 mod summary;
 
 pub async fn handler(
@@ -15,6 +16,7 @@ pub async fn handler(
         (&Method::GET, "/") => Ok(Response::new(Body::from("Pew pew"))),
         (&Method::GET, "/healthcheck") => Ok(Response::new(Body::from("Ok"))),
         (&Method::GET, "/summary") => Ok(summary::handle(req, &*db_client).await),
+        (&Method::GET, "/checks") => Ok(checks::handle(req, &*db_client).await),
         _ => {
             let res = response_with_string_body(StatusCode::NOT_FOUND, "404 - Page Not Found");
             Ok(res)

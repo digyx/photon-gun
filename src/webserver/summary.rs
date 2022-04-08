@@ -5,6 +5,8 @@ use sqlx::types::chrono;
 use sqlx::{FromRow, PgExecutor};
 use tracing::{debug, error};
 
+use crate::db;
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
     #[serde(alias = "service")]
@@ -78,7 +80,7 @@ where
         LIMIT 60
     ",
         queries.resolution.unwrap_or(Resolution::Minute),
-        queries.service_name,
+        db::get_table_name(&queries.service_name),
     );
 
     let result: Vec<HealthcheckSummary> =

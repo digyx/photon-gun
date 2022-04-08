@@ -3,8 +3,8 @@ use tracing::debug;
 
 use crate::healthcheck;
 
-fn get_table_name(given: &str) -> String {
-    format!("check_{}", base64::encode_config(given, base64::URL_SAFE))
+pub fn get_table_name(given: &str) -> String {
+    format!("check_{}", base64::encode_config(given, base64::URL_SAFE_NO_PAD))
 }
 
 pub async fn create_healthcheck_table<'a, E>(pool: E, service_name: &str) -> Result<(), sqlx::Error>
