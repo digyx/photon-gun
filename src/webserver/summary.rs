@@ -1,20 +1,19 @@
-use std::convert::Infallible;
-use std::sync::Arc;
-
-use hyper::{Body, Method, Request, Response, StatusCode};
+use hyper::{Body, Request, Response, StatusCode, Uri};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sqlx::types::chrono;
-use sqlx::{postgres, FromRow, PgExecutor};
+use sqlx::{FromRow, PgExecutor};
 use tracing::{debug, error};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 struct SummaryQueries {
+    #[serde(alias = "service")]
     service_name: String,
     resolution: Option<SummaryResolution>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 enum SummaryResolution {
     Second,
     Minute,
@@ -55,46 +54,15 @@ impl Serialize for HealthcheckSummary {
     }
 }
 
-pub async fn handler(
-    req: Request<Body>,
-    db_client: Arc<postgres::PgPool>,
-) -> Result<Response<Body>, Infallible> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => Ok(Response::new(Body::from("Pew pew"))),
-        (&Method::GET, "/healthcheck") => Ok(Response::new(Body::from("Ok"))),
-        (&Method::GET, "/summary") => Ok(handle_summary(req, &*db_client).await),
-        _ => {
-            let res = Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("404 - Page Not Found"))
-                .unwrap();
-            Ok(res)
-        }
-    }
-}
-
-async fn handle_summary<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
+pub async fn handle<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
 where
     E: PgExecutor<'a>,
 {
-    let raw_query = match req.uri().query() {
-        Some(raw_query) => raw_query,
-        None => {
-            return response_with_string_body(
-                StatusCode::BAD_REQUEST,
-                "No parameters given when 'service' is required.",
-            );
-        }
-    };
-
-    let queries: SummaryQueries = match serde_qs::from_str(raw_query) {
+    let queries = match decode_url_params(req.uri()) {
         Ok(queries) => queries,
         Err(err) => {
             debug!(%err, msg = "Invalid URL paramters given.");
-            return response_with_string_body(
-                StatusCode::BAD_REQUEST,
-                "Invalid URL parameters.  See the docs at github.com/digyx/photon-gun for valid URL parameters.",
-            );
+            return super::response_with_string_body(StatusCode::BAD_REQUEST, err);
         }
     };
 
@@ -118,7 +86,7 @@ where
             Ok(result) => result,
             Err(err) => {
                 error!(%err);
-                return response_with_string_body(
+                return super::response_with_string_body(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "failed to decode postgres row",
                 );
@@ -136,16 +104,32 @@ where
     Response::new(Body::from(body))
 }
 
-fn response_with_string_body(status: StatusCode, msg: &'static str) -> Response<Body> {
-    Response::builder()
-        .status(status)
-        .body(Body::from(msg))
-        .unwrap()
+fn decode_url_params(uri: &Uri) -> Result<SummaryQueries, &'static str> {
+    let queries = match uri.query() {
+        Some(val) => val,
+        None => return Err("No parameters passed when 'service' is required."),
+    };
+
+    match serde_qs::from_str(queries) {
+        Ok(val) => Ok(val),
+        Err(_) => Err("Invalid parameters.  Only 'service' (string) and 'resolution' (second,minute,hour,day) are supported.")
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
+
+    impl SummaryQueries {
+        fn new(service_name: String, resolution: Option<SummaryResolution>) -> SummaryQueries {
+            SummaryQueries {
+                service_name,
+                resolution,
+            }
+        }
+    }
 
     #[test]
     fn success_healthcheck_summary_serialization() {
@@ -158,5 +142,38 @@ mod tests {
 
         let res = serde_json::to_string(&input).unwrap();
         assert_eq!(&res, expected);
+    }
+
+    #[rstest]
+    #[case(
+        Uri::try_from("/test?service=test"),
+        SummaryQueries::new("test".into(), None)
+    )]
+    #[case(
+        Uri::try_from("/test?service=vorona"),
+        SummaryQueries::new("vorona".into(), None)
+    )]
+    #[case(
+        Uri::try_from("/test?service=test&resolution=second"),
+        SummaryQueries::new("test".into(), Some(SummaryResolution::Second))
+    )]
+    #[case(
+        Uri::try_from("/test?service=test&resolution=minute"),
+        SummaryQueries::new("test".into(), Some(SummaryResolution::Minute))
+    )]
+    #[case(
+        Uri::try_from("/test?service=test&resolution=hour"),
+        SummaryQueries::new("test".into(), Some(SummaryResolution::Hour))
+    )]
+    #[case(
+        Uri::try_from("/test?service=test&resolution=day"),
+        SummaryQueries::new("test".into(), Some(SummaryResolution::Day))
+    )]
+    fn success_decode_url_params(
+        #[case] input: Result<Uri, http::uri::InvalidUri>,
+        #[case] expected: SummaryQueries,
+    ) {
+        let res = decode_url_params(&input.unwrap()).unwrap();
+        assert_eq!(res, expected);
     }
 }

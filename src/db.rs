@@ -61,7 +61,7 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case("vorona","check_dm9yb25h")]
+    #[case("vorona", "check_dm9yb25h")]
     fn success_get_table_name(#[case] name: &str, #[case] expected: &str) {
         let res = get_table_name(name);
 
