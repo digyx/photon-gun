@@ -72,9 +72,12 @@ impl BasicCheck {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use rstest::rstest;
+
     use hyper::StatusCode;
     use sqlx::PgPool;
-    use std::sync::Arc;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -118,27 +121,23 @@ mod tests {
         check.run().await
     }
 
+    #[rstest]
+    #[case(200)]
+    #[case(201)]
+    #[case(202)]
     #[tokio::test]
-    async fn success() {
-        let test_cases = vec![200, 201, 202];
-
-        for status_code in test_cases {
-            test_basic_check_run(status_code).await.unwrap()
-        }
+    async fn success(#[case] status_code: u16) {
+        test_basic_check_run(status_code).await.unwrap()
     }
 
+    #[rstest]
+    #[case(101, StatusCode::SWITCHING_PROTOCOLS.to_string())]
+    #[case(304, StatusCode::NOT_MODIFIED.to_string())]
+    #[case(404, StatusCode::NOT_FOUND.to_string())]
+    #[case(500, StatusCode::INTERNAL_SERVER_ERROR.to_string())]
     #[tokio::test]
-    async fn fail() {
-        let test_cases = vec![
-            (101, StatusCode::SWITCHING_PROTOCOLS.to_string()),
-            (304, StatusCode::NOT_MODIFIED.to_string()),
-            (404, StatusCode::NOT_FOUND.to_string()),
-            (500, StatusCode::INTERNAL_SERVER_ERROR.to_string()),
-        ];
-
-        for (status_code, expected) in test_cases {
-            let res = test_basic_check_run(status_code).await.unwrap_err();
-            assert_eq!(res, expected);
-        }
+    async fn fail(#[case] status_code: u16, #[case] expected: String) {
+        let res = test_basic_check_run(status_code).await.unwrap_err();
+        assert_eq!(res, expected);
     }
 }

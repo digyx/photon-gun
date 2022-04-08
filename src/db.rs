@@ -56,12 +56,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn success_get_table_name() {
-        let expected = "check_dm9yb25h";
-        let res = get_table_name("vorona");
+    #[rstest]
+    #[case("vorona","check_dm9yb25h")]
+    fn success_get_table_name(#[case] name: &str, #[case] expected: &str) {
+        let res = get_table_name(name);
 
         assert_eq!(res, expected);
     }
