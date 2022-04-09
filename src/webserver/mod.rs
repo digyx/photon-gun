@@ -39,6 +39,6 @@ fn decode_url_params<'de, T: Deserialize<'de>>(uri: &'de Uri) -> Result<T, &'sta
 
     match serde_qs::from_str(queries) {
         Ok(val) => Ok(val),
-        Err(_) => Err("Invalid parameters.  Only 'service' (string) and 'resolution' (second,minute,hour,day) are supported.")
+        Err(_) => Err("invalid parameters"),
     }
 }

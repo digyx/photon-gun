@@ -1,10 +1,41 @@
 use sqlx::PgExecutor;
-use tracing::debug;
+use tracing::{debug, error, warn};
 
 use crate::healthcheck;
 
-pub fn get_table_name(given: &str) -> String {
-    format!("check_{}", base64::encode_config(given, base64::URL_SAFE_NO_PAD))
+pub fn encode_table_name(given: &str) -> String {
+    format!(
+        "\"check_{}\"",
+        base64::encode_config(given, base64::URL_SAFE)
+    )
+}
+
+pub fn decode_table_name(given: &str) -> Option<String> {
+    let b64 = match given.strip_prefix("check_") {
+        Some(val) => val,
+        None => {
+            warn!(msg = "database table name with no 'check_' prefix", table_name = %given);
+            given
+        }
+    };
+
+    let bytes = match base64::decode_config(b64, base64::URL_SAFE) {
+        Ok(val) => val,
+        Err(err) => {
+            error!(%err);
+            return None;
+        }
+    };
+
+    let utf8 = match std::str::from_utf8(&bytes[..]) {
+        Ok(val) => val.to_owned(),
+        Err(err) => {
+            error!(%err);
+            return None;
+        }
+    };
+
+    Some(utf8)
 }
 
 pub async fn create_healthcheck_table<'a, E>(pool: E, service_name: &str) -> Result<(), sqlx::Error>
@@ -21,7 +52,7 @@ where
             message TEXT
         )
     ",
-        get_table_name(service_name)
+        encode_table_name(service_name)
     );
     let result = sqlx::query(&sql_query).execute(pool).await?;
 
@@ -38,7 +69,7 @@ where
 {
     let sql_query = format!(
         "INSERT INTO {} (start_time, elapsed_time, pass, message) VALUES (To_Timestamp($1), $2::interval, $3, $4)",
-        get_table_name(&check.service_name),
+        encode_table_name(&check.service_name),
     );
     let result = sqlx::query(&sql_query)
         // To_Timestamp takes type "double precision", aka. Rust f64
@@ -61,10 +92,22 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case("vorona", "check_dm9yb25h")]
-    fn success_get_table_name(#[case] name: &str, #[case] expected: &str) {
-        let res = get_table_name(name);
+    #[case("vorona", "\"check_dm9yb25h\"")]
+    #[case("google", "\"check_Z29vZ2xl\"")]
+    #[case("test", "\"check_dGVzdA==\"")]
+    #[case("random", "\"check_cmFuZG9t\"")]
+    fn success_encode_table_name(#[case] name: &str, #[case] expected: &str) {
+        let res = encode_table_name(name);
+        assert_eq!(res, expected);
+    }
 
+    #[rstest]
+    #[case("check_dm9yb25h", "vorona")]
+    #[case("check_Z29vZ2xl", "google")]
+    #[case("check_dGVzdA==", "test")]
+    #[case("check_cmFuZG9t", "random")]
+    fn success_decode_table_name(#[case] name: &str, #[case] expected: &str) {
+        let res = decode_table_name(name).unwrap();
         assert_eq!(res, expected);
     }
 }

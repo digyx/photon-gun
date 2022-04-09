@@ -80,7 +80,7 @@ where
         LIMIT 60
     ",
         queries.resolution.unwrap_or(Resolution::Minute),
-        db::get_table_name(&queries.service_name),
+        db::encode_table_name(&queries.service_name),
     );
 
     let result: Vec<HealthcheckSummary> =
