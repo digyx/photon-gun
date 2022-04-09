@@ -36,10 +36,9 @@ impl Serialize for Healthcheck {
     {
         let mut s = serializer.serialize_struct("Healthcheck", 4)?;
         s.serialize_field("start_time", &self.start_time.to_string())?;
-        s.serialize_field(
-            "elapsed_time",
-            &(self.elapsed_time.microseconds as f64 / 1000_f64),
-        )?;
+        // These are already stored as milliseconds, but PgInterval stores microseconds
+        // Well...for values this small it does (microseconds, days, months)
+        s.serialize_field("elapsed_time", &(self.elapsed_time.microseconds / 1000))?;
         s.serialize_field("pass", &self.pass)?;
         s.serialize_field("message", &self.message)?;
         s.end()
@@ -50,15 +49,14 @@ pub async fn handle<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
 where
     E: PgExecutor<'a>,
 {
+    // If there are no URI Queries, then this endpoint should return a list of healthcheck names
+    // based on the (decoded) table names in the database
     if req.uri().query().is_none() {
         let check_names = match list_check_names(db_client).await {
             Ok(val) => val,
             Err(err) => {
                 error!(%err);
-                return super::response_with_string_body(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "shit...",
-                );
+                return super::response_with_string_body(StatusCode::INTERNAL_SERVER_ERROR, err);
             }
         };
 
@@ -70,7 +68,7 @@ where
         Err(_) => {
             return super::response_with_string_body(
                 StatusCode::BAD_REQUEST,
-                "invalid parameters: alphanumeric parameter 'service' is required with optional positive integer parameter 'limit'",
+                "invalid parameters: alphanumeric parameter 'service' is required",
             )
         }
     };
@@ -115,11 +113,11 @@ where
     Response::new(Body::from(body))
 }
 
-async fn list_check_names<'a, E>(db_client: E) -> Result<String, String>
+async fn list_check_names<'a, E>(db_client: E) -> Result<String, &'static str>
 where
     E: PgExecutor<'a>,
 {
-    let result: Vec<TableNames> = match sqlx::query_as(
+    let rows = sqlx::query_as(
         "
             SELECT
                 table_name
@@ -130,8 +128,10 @@ where
             ",
     )
     .fetch_all(db_client)
-    .await
-    {
+    .await;
+
+    // 'rows' variable exists for reabability
+    let result: Vec<TableNames> = match rows {
         Ok(val) => val,
         Err(err) => {
             error!(%err);
@@ -139,21 +139,29 @@ where
         }
     };
 
+    // The database returns a list of encoded table names, so we need to decode each name and then
+    // collect the results in a Vector we can serialize
     let table_names: Vec<String> = result
         .iter()
-        .map(|a| match db::decode_table_name(&a.table_name) {
-            Some(val) => val,
-            None => {
-                error!("failed to decode healthcheck names");
-                "FUCK".into()
+        .map(|a| {
+            match db::decode_table_name(&a.table_name) {
+                Some(val) => val,
+                // None is only returned when the decode fails
+                // This *should* never happen since we're the ones who encode it and encode using
+                // padding (no padding causeed a huge headache)
+                None => {
+                    error!(err = "failed to decode healthcheck name", table_name = %a.table_name);
+                    String::new() // This is not a *good* solution, but it's all I can think of right now
+                }
             }
         })
         .collect();
+
     let body = match serde_json::to_string(&table_names) {
         Ok(val) => val,
         Err(err) => {
             error!(%err);
-            err.to_string()
+            return Err("failed to encode healthcheck names to JSON");
         }
     };
 

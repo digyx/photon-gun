@@ -3,13 +3,20 @@ use tracing::{debug, error, warn};
 
 use crate::healthcheck;
 
+// Used to protect against SQL injection for the table names
+// I almost feel embarrassed for having this function, but it works well so...
 pub fn encode_table_name(given: &str) -> String {
     format!(
+        // Since b64 includes "illegal" postgres characters, we need quotation marks to use them.
+        // It's better to do it here rather than the actual queries since one could easily forget
+        // to include them in the query
         "\"check_{}\"",
         base64::encode_config(given, base64::URL_SAFE)
     )
 }
 
+// Strip the check_ prefix and decode the base64
+// This shouldn't be able to fail anymore...but I'm still skeptical
 pub fn decode_table_name(given: &str) -> Option<String> {
     let b64 = match given.strip_prefix("check_") {
         Some(val) => val,
@@ -38,6 +45,8 @@ pub fn decode_table_name(given: &str) -> Option<String> {
     Some(utf8)
 }
 
+// Each healthcheck gets its own postgres table since the "name" column would be absolutely
+// redundant.  We also only query for, at most, one check at a time
 pub async fn create_healthcheck_table<'a, E>(pool: E, service_name: &str) -> Result<(), sqlx::Error>
 where
     E: PgExecutor<'a>,
@@ -45,11 +54,11 @@ where
     let sql_query = format!(
         "
         CREATE TABLE IF NOT EXISTS {} (
-            id      SERIAL PRIMARY KEY,
+            id           SERIAL PRIMARY KEY,
             start_time   TIMESTAMP NOT NULL,
             elapsed_time INTERVAL  NOT NULL,
-            pass    BOOL NOT NULL,
-            message TEXT
+            pass         BOOL      NOT NULL,
+            message      TEXT
         )
     ",
         encode_table_name(service_name)
@@ -71,6 +80,7 @@ where
         "INSERT INTO {} (start_time, elapsed_time, pass, message) VALUES (To_Timestamp($1), $2::interval, $3, $4)",
         encode_table_name(&check.service_name),
     );
+
     let result = sqlx::query(&sql_query)
         // To_Timestamp takes type "double precision", aka. Rust f64
         .bind(check.start_time)

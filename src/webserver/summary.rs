@@ -23,6 +23,7 @@ enum Resolution {
     Day,
 }
 
+// Display is used when constructing the SQL query
 impl std::fmt::Display for Resolution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let res = match self {
@@ -36,6 +37,7 @@ impl std::fmt::Display for Resolution {
     }
 }
 
+// Used for decoding the SQL result into
 #[derive(Debug, FromRow)]
 struct HealthcheckSummary {
     time_window: chrono::NaiveDateTime,
@@ -43,6 +45,7 @@ struct HealthcheckSummary {
     fail: i64,
 }
 
+// And then to serialize into a JSON response
 impl Serialize for HealthcheckSummary {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -63,7 +66,7 @@ where
     let queries: UriQueries = match super::decode_url_params(req.uri()) {
         Ok(queries) => queries,
         Err(err) => {
-            debug!(%err, msg = "Invalid URL paramters given.");
+            debug!(%err);
             return super::response_with_string_body(StatusCode::BAD_REQUEST, err);
         }
     };
@@ -84,8 +87,10 @@ where
     );
 
     let result: Vec<HealthcheckSummary> =
+        // Run the actual query
         match sqlx::query_as(&sql_query).fetch_all(db_client).await {
             Ok(result) => result,
+            // This error should never happen
             Err(err) => {
                 error!(%err);
                 return super::response_with_string_body(
@@ -97,6 +102,7 @@ where
 
     let body = match serde_json::to_string(&result) {
         Ok(value) => value,
+        // Another error that should never happen
         Err(err) => {
             error!(%err);
             err.to_string()
