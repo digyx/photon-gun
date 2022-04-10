@@ -28,7 +28,7 @@ impl LuxuryCheck {
     // enough for me to be so.
     pub fn spawn(&self) {
         let start_time = time::SystemTime::now();
-        let res = match self.run() {
+        let (pass, msg) = match self.run() {
             Ok(msg) => {
                 info!(%self.name, status = "pass", %msg);
                 (true, msg)
@@ -41,7 +41,8 @@ impl LuxuryCheck {
 
         let db_client = self.db_client.clone();
         let table_name = self.name.clone();
-        let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
+        let result =
+            super::HealthcheckResult::new(&self.name, pass, msg, start_time, start_time.elapsed());
 
         self.handle.spawn(async move {
             if let Err(err) =

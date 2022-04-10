@@ -10,7 +10,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
 
-use photon_gun::{config,healthcheck,webserver};
+use photon_gun::{config, healthcheck, webserver};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

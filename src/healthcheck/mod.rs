@@ -4,7 +4,7 @@ mod luxury;
 use std::time;
 
 use sqlx::PgPool;
-use tracing::{error, debug, warn};
+use tracing::{debug, error, warn};
 
 pub use self::basic::BasicCheck;
 pub use self::luxury::LuxuryCheck;
@@ -12,7 +12,7 @@ pub use self::luxury::LuxuryCheck;
 pub struct HealthcheckResult {
     pub table_name: String,
     pub start_time: f64,
-    pub elapsed_time: String,
+    pub elapsed_time: i64,
     pub pass: bool,
     pub message: String,
 }
@@ -23,11 +23,15 @@ impl HealthcheckResult {
         pass: bool,
         message: String,
         start_time: time::SystemTime,
+        elapsed_time: Result<time::Duration, time::SystemTimeError>,
     ) -> HealthcheckResult {
         // Since UNIX_EPOCH is so far in the past, we can assume that duration_since won't fail
         let since_epoch = start_time.duration_since(time::UNIX_EPOCH).unwrap();
+
         // Elapsed time *could* go backwards, but it's highly unlikely
-        let elapsed_time = match start_time.elapsed() {
+        // I wanna handle this here instead of in the functions because less duplicate code is
+        // better
+        let elapsed_time = match elapsed_time {
             Ok(res) => res,
             Err(err) => {
                 error!(service.name = %service_name, %err, msg = "TIME MOVED BACKWARDS; CLAMPING TO ZERO");
@@ -41,9 +45,9 @@ impl HealthcheckResult {
             // https://www.postgresql.org/docs/current/functions-datetime.html
             start_time: since_epoch.as_secs_f64(),
             // We could measure in microseconds, but milliseconds are plenty enough precision
-            // Postgres does not support microseconds
+            // Postgres does not support nanoseconds while Rust does
             // https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-INTERVAL-INPUT
-            elapsed_time: format!("{} millisecond", elapsed_time.as_millis()),
+            elapsed_time: elapsed_time.as_millis() as i64,
             pass,
             message,
         }
@@ -72,7 +76,10 @@ impl HealthcheckResult {
 
 // Each healthcheck gets its own postgres table since the "name" column would be absolutely
 // redundant.  We also only query for, at most, one check at a time
-pub async fn create_healthcheck_table(pool: &PgPool, service_name: &str) -> Result<(), sqlx::Error> {
+pub async fn create_healthcheck_table(
+    pool: &PgPool,
+    service_name: &str,
+) -> Result<(), sqlx::Error> {
     let sql_query = format!(
         "
         CREATE TABLE IF NOT EXISTS {} (

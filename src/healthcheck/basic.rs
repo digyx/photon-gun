@@ -32,7 +32,7 @@ impl BasicCheck {
         // Reqwest Error............String representation of error
         // Status Code is not 2xx...String representation of status code (ex. "404 Not Found")
         // Status Code is 2xx.......Empty string
-        let res = match self.run().await {
+        let (pass, msg) = match self.run().await {
             Ok(_) => {
                 info!(%self.name, status = "pass");
                 (true, String::new())
@@ -43,7 +43,8 @@ impl BasicCheck {
             }
         };
 
-        let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
+        let result =
+            super::HealthcheckResult::new(&self.name, pass, msg, start_time, start_time.elapsed());
 
         // Save result in postgres
         if let Err(err) = result.db_insert(&self.db_client).await {
