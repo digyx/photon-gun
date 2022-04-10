@@ -5,7 +5,6 @@ use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
 use crate::config::BasicCheckConfig;
-use crate::db;
 
 #[derive(Debug)]
 pub struct BasicCheck {
@@ -47,7 +46,7 @@ impl BasicCheck {
         let result = super::HealthcheckResult::new(&self.name, res.0, res.1, start_time);
 
         // Save result in postgres
-        if let Err(err) = db::record_healthcheck(&*self.db_client, result).await {
+        if let Err(err) = result.db_insert(&self.db_client).await {
             error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }

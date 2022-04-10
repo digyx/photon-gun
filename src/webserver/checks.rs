@@ -3,10 +3,10 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::chrono;
-use sqlx::{FromRow, PgExecutor};
+use sqlx::{FromRow, PgPool};
 use tracing::error;
 
-use crate::db;
+use crate::healthcheck;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
@@ -45,10 +45,7 @@ impl Serialize for Healthcheck {
     }
 }
 
-pub async fn handle<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
-where
-    E: PgExecutor<'a>,
-{
+pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
     // If there are no URI Queries, then this endpoint should return a list of healthcheck names
     // based on the (decoded) table names in the database
     if req.uri().query().is_none() {
@@ -84,7 +81,7 @@ where
         ORDER BY id DESC
         LIMIT $1
         ",
-        db::encode_table_name(&queries.service_name)
+        healthcheck::encode_table_name(&queries.service_name)
     );
 
     let result: Vec<Healthcheck> = match sqlx::query_as(&sql_query)
@@ -113,10 +110,7 @@ where
     Response::new(Body::from(body))
 }
 
-async fn list_check_names<'a, E>(db_client: E) -> Result<String, &'static str>
-where
-    E: PgExecutor<'a>,
-{
+async fn list_check_names(db_client: &PgPool) -> Result<String, &'static str> {
     let rows = sqlx::query_as(
         "
             SELECT
@@ -144,7 +138,7 @@ where
     let table_names: Vec<String> = result
         .iter()
         .map(|a| {
-            match db::decode_table_name(&a.table_name) {
+            match healthcheck::decode_table_name(&a.table_name) {
                 Some(val) => val,
                 // None is only returned when the decode fails
                 // This *should* never happen since we're the ones who encode it and encode using

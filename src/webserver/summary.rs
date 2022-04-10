@@ -2,10 +2,10 @@ use hyper::{Body, Request, Response, StatusCode};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sqlx::types::chrono;
-use sqlx::{FromRow, PgExecutor};
+use sqlx::{FromRow, PgPool};
 use tracing::{debug, error};
 
-use crate::db;
+use crate::healthcheck;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
@@ -59,10 +59,7 @@ impl Serialize for HealthcheckSummary {
     }
 }
 
-pub async fn handle<'a, E>(req: Request<Body>, db_client: E) -> Response<Body>
-where
-    E: PgExecutor<'a>,
-{
+pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
     let queries: UriQueries = match super::decode_url_params(req.uri()) {
         Ok(queries) => queries,
         Err(err) => {
@@ -83,7 +80,7 @@ where
         LIMIT 60
     ",
         queries.resolution.unwrap_or(Resolution::Minute),
-        db::encode_table_name(&queries.service_name),
+        healthcheck::encode_table_name(&queries.service_name),
     );
 
     let result: Vec<HealthcheckSummary> =

@@ -4,8 +4,6 @@ use rlua::StdLib;
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
-use crate::db;
-
 #[derive(Debug)]
 pub struct LuxuryCheck {
     name: String,
@@ -47,7 +45,7 @@ impl LuxuryCheck {
 
         self.handle.spawn(async move {
             if let Err(err) =
-                db::record_healthcheck(&*db_client, result).await
+                result.db_insert(&db_client).await
             {
                 error!(service.name = %table_name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
             }

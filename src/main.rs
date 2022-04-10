@@ -10,10 +10,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
 
-mod config;
-mod db;
-mod healthcheck;
-mod webserver;
+use photon_gun::{config,healthcheck,webserver};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -68,7 +65,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         // Create the database table for the basic check
         // Every basic check gets its own table
-        db::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
+        healthcheck::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
 
         // Ensures that the tasks runs every two seconds without being affected by the execution
         // time.  This does mean checks can overlap if execution takes too long
@@ -100,7 +97,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for service in conf.luxury_checks {
         info!(%service.name, msg = "starting luxury check...");
 
-        db::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
+        healthcheck::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
 
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
