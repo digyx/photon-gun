@@ -167,3 +167,59 @@ where
 
     Ok(body)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use hyper::Uri;
+    use rstest::rstest;
+
+    impl UriQueries {
+        fn new(service_name: String, limit: Option<i32>) -> UriQueries {
+            UriQueries {
+                service_name,
+                limit,
+            }
+        }
+    }
+
+    #[test]
+    fn success_healthcheck_serialization() {
+        let input = Healthcheck {
+            start_time: chrono::NaiveDateTime::from_timestamp(1648771200, 0),
+            elapsed_time: PgInterval {
+                months: 0,
+                days: 0,
+                microseconds: 42_000,
+            },
+            pass: true,
+            message: "".into(),
+        };
+        let expected = "{\"start_time\":\"2022-04-01 00:00:00\",\"elapsed_time\":42,\"pass\":true,\"message\":\"\"}";
+
+        let res = serde_json::to_string(&input).unwrap();
+        assert_eq!(&res, expected);
+    }
+
+    #[rstest]
+    #[case(
+        Uri::try_from("/test?service=test"),
+        UriQueries::new("test".into(), None)
+    )]
+    #[case(
+        Uri::try_from("/test?service=vorona"),
+        UriQueries::new("vorona".into(), None)
+    )]
+    #[case(
+        Uri::try_from("/test?service=test&limit=10"),
+        UriQueries::new("test".into(), Some(10))
+    )]
+    fn success_decode_url_params(
+        #[case] input: Result<Uri, http::uri::InvalidUri>,
+        #[case] expected: UriQueries,
+    ) {
+        let res: UriQueries = super::super::decode_url_params(&input.unwrap()).unwrap();
+        assert_eq!(res, expected);
+    }
+}
