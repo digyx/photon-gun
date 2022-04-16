@@ -5,12 +5,11 @@ use sqlx::types::chrono;
 use sqlx::{FromRow, PgPool};
 use tracing::{debug, error};
 
-use crate::healthcheck;
-
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
     #[serde(alias = "service")]
-    service_name: String,
+    id: Option<i32>,
+    name: Option<String>,
     resolution: Option<Resolution>,
 }
 
@@ -74,18 +73,23 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
             date_trunc('{}', start_time) as time_window,
             count(*) filter(where \"pass\") as pass,
             count(*) filter(where not \"pass\") as fail
-        FROM {}
+        FROM basic_check_results
+        WHERE check_id=$1
+            OR name=$2
         GROUP BY time_window
         ORDER BY time_window DESC
         LIMIT 60
     ",
-        queries.resolution.unwrap_or(Resolution::Minute),
-        healthcheck::encode_table_name(&queries.service_name),
+        queries.resolution.unwrap_or(Resolution::Minute)
     );
 
     let result: Vec<HealthcheckSummary> =
         // Run the actual query
-        match sqlx::query_as(&sql_query).fetch_all(db_client).await {
+        match sqlx::query_as(&sql_query)
+            .bind(queries.id)
+            .bind(queries.name)
+            .fetch_all(db_client)
+            .await {
             Ok(result) => result,
             // This error should never happen
             Err(err) => {
@@ -117,9 +121,10 @@ mod tests {
     use rstest::rstest;
 
     impl UriQueries {
-        fn new(service_name: String, resolution: Option<Resolution>) -> UriQueries {
+        fn new(id: Option<i32>, name: Option<String>, resolution: Option<Resolution>) -> UriQueries {
             UriQueries {
-                service_name,
+                id,
+                name,
                 resolution,
             }
         }
@@ -140,28 +145,28 @@ mod tests {
 
     #[rstest]
     #[case(
-        Uri::try_from("/test?service=test"),
-        UriQueries::new("test".into(), None)
+        Uri::try_from("/test?name=test"),
+        UriQueries::new(None, Some("test".into()), None)
     )]
     #[case(
-        Uri::try_from("/test?service=vorona"),
-        UriQueries::new("vorona".into(), None)
+        Uri::try_from("/test?name=vorona"),
+        UriQueries::new(None, Some("vorona".into()), None)
     )]
     #[case(
-        Uri::try_from("/test?service=test&resolution=second"),
-        UriQueries::new("test".into(), Some(Resolution::Second))
+        Uri::try_from("/test?name=test&resolution=second"),
+        UriQueries::new(None, Some("test".into()), Some(Resolution::Second))
     )]
     #[case(
-        Uri::try_from("/test?service=test&resolution=minute"),
-        UriQueries::new("test".into(), Some(Resolution::Minute))
+        Uri::try_from("/test?name=test&resolution=minute"),
+        UriQueries::new(None, Some("test".into()), Some(Resolution::Minute))
     )]
     #[case(
-        Uri::try_from("/test?service=test&resolution=hour"),
-        UriQueries::new("test".into(), Some(Resolution::Hour))
+        Uri::try_from("/test?name=test&resolution=hour"),
+        UriQueries::new(None, Some("test".into()), Some(Resolution::Hour))
     )]
     #[case(
-        Uri::try_from("/test?service=test&resolution=day"),
-        UriQueries::new("test".into(), Some(Resolution::Day))
+        Uri::try_from("/test?name=test&resolution=day"),
+        UriQueries::new(None, Some("test".into()), Some(Resolution::Day))
     )]
     fn success_decode_url_params(
         #[case] input: Result<Uri, http::uri::InvalidUri>,

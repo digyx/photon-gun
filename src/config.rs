@@ -67,6 +67,7 @@ fn default_min_connections() -> u32 {
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct BasicCheckConfig {
+    pub id: i32,
     pub name: String,
     // HTTP URL the check will send a GET request to
     pub endpoint: String,
@@ -76,6 +77,7 @@ pub struct BasicCheckConfig {
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct LuxuryCheckConfig {
+    pub id: i32,
     pub name: String,
     // Path to Lua script to be ran for the check
     // Relative paths start in CONFIG_DIR/scripts/
@@ -154,11 +156,13 @@ mod tests {
             },
             basic_checks: vec![
                 BasicCheckConfig {
+                    id: 0,
                     name: "google".into(),
                     endpoint: "https://google.com".into(),
                     interval: 1,
                 },
                 BasicCheckConfig {
+                    id: 0,
                     name: "vorona".into(),
                     endpoint: "https://vorona.gg/healthcheck".into(),
                     interval: 1,
@@ -166,11 +170,13 @@ mod tests {
             ],
             luxury_checks: vec![
                 LuxuryCheckConfig {
+                    id: 0,
                     name: "test".into(),
                     script_path: "test.lua".into(),
                     interval: 5,
                 },
                 LuxuryCheckConfig {
+                    id: 0,
                     name: "random".into(),
                     script_path: "random.lua".into(),
                     interval: 1,

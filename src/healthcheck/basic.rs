@@ -4,11 +4,11 @@ use std::time;
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
-use crate::config::BasicCheckConfig;
+use crate::{config::BasicCheckConfig, db};
 
 #[derive(Debug)]
 pub struct BasicCheck {
-    name: String,
+    id: i32,
     endpoint: String,
     db_client: Arc<Pool<Postgres>>,
     http_client: reqwest::Client,
@@ -17,7 +17,7 @@ pub struct BasicCheck {
 impl BasicCheck {
     pub fn new(conf: BasicCheckConfig, db_client: Arc<Pool<Postgres>>) -> Self {
         BasicCheck {
-            name: conf.name,
+            id: conf.id,
             endpoint: conf.endpoint,
             db_client,
             http_client: reqwest::Client::new(),
@@ -34,21 +34,21 @@ impl BasicCheck {
         // Status Code is 2xx.......Empty string
         let (pass, msg) = match self.run().await {
             Ok(_) => {
-                info!(%self.name, status = "pass");
-                (true, String::new())
+                info!(check.id = self.id, status = "pass");
+                (true, None)
             }
             Err(err) => {
-                warn!(%self.name, status = "fail", error = %err);
-                (false, err)
+                warn!(check.id = self.id, status = "fail", error = %err);
+                (false, Some(err))
             }
         };
 
         let result =
-            super::HealthcheckResult::new(&self.name, pass, msg, start_time, start_time.elapsed());
+            super::new_healthcheck_result(self.id, pass, msg, start_time, start_time.elapsed());
 
         // Save result in postgres
-        if let Err(err) = result.db_insert(&self.db_client).await {
-            error!(service.name = %self.name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
+        if let Err(err) = db::insert_basic_check_result(&self.db_client, result).await {
+            error!(check.id = self.id, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
 
@@ -87,19 +87,20 @@ mod tests {
     async fn create_basic_check() {
         let db_client = Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap());
         let input = BasicCheckConfig {
+            id: 1,
             name: "test".into(),
             endpoint: "https://test.com".into(),
             interval: 5,
         };
         let expected = BasicCheck {
-            name: "test".into(),
+            id: 1,
             endpoint: "https://test.com".into(),
             db_client: db_client.clone(),
             http_client: reqwest::Client::new(),
         };
 
         let res = BasicCheck::new(input, db_client.clone());
-        assert_eq!(res.name, expected.name);
+        assert_eq!(res.id, expected.id);
         assert_eq!(res.endpoint, expected.endpoint);
     }
 
@@ -112,7 +113,7 @@ mod tests {
             .await;
 
         let check = BasicCheck {
-            name: "test".into(),
+            id: 0,
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
             db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
             http_client: reqwest::Client::new(),

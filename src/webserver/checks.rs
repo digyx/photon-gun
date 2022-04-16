@@ -6,12 +6,12 @@ use sqlx::types::chrono;
 use sqlx::{FromRow, PgPool};
 use tracing::error;
 
-use crate::healthcheck;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
     #[serde(alias = "service")]
-    service_name: String,
+    id: Option<i32>,
+    name: Option<String>,
     limit: Option<i32>,
 }
 
@@ -21,12 +21,12 @@ struct Healthcheck {
     start_time: chrono::NaiveDateTime,
     elapsed_time: PgInterval,
     pass: bool,
-    message: String,
 }
 
-#[derive(Debug, FromRow)]
-struct TableNames {
-    table_name: String,
+#[derive(Debug, Serialize, FromRow)]
+struct BasicCheck {
+    check_id: i32,
+    name: Option<String>,
 }
 
 impl Serialize for Healthcheck {
@@ -40,7 +40,6 @@ impl Serialize for Healthcheck {
         // Well...for values this small it does (microseconds, days, months)
         s.serialize_field("elapsed_time", &(self.elapsed_time.microseconds / 1000))?;
         s.serialize_field("pass", &self.pass)?;
-        s.serialize_field("message", &self.message)?;
         s.end()
     }
 }
@@ -65,26 +64,27 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
         Err(_) => {
             return super::response_with_string_body(
                 StatusCode::BAD_REQUEST,
-                "invalid parameters: alphanumeric parameter 'service' is required",
+                "invalid parameters: parameter 'name' or 'id' is required",
             )
         }
     };
 
-    let sql_query = format!(
-        "
+    let sql_query = "
         SELECT
             start_time,
             elapsed_time,
             pass,
-            message
-        FROM {}
+        FROM basic_check_results
+        WHERE check_id=$1
+            OR name=$2
         ORDER BY id DESC
-        LIMIT $1
-        ",
-        healthcheck::encode_table_name(&queries.service_name)
-    );
+        LIMIT $3
+        ";
 
-    let result: Vec<Healthcheck> = match sqlx::query_as(&sql_query)
+
+    let result: Vec<Healthcheck> = match sqlx::query_as(sql_query)
+        .bind(queries.id)
+        .bind(queries.name)
         .bind(queries.limit.unwrap_or(100))
         .fetch_all(db_client)
         .await
@@ -111,21 +111,12 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
 }
 
 async fn list_check_names(db_client: &PgPool) -> Result<String, &'static str> {
-    let rows = sqlx::query_as(
-        "
-            SELECT
-                table_name
-            FROM information_schema.tables
-            WHERE table_schema='public'
-            AND table_type='BASE TABLE'
-            AND starts_with(table_name, 'check_')
-            ",
-    )
+    let rows = sqlx::query_as("SELECT check_id, name FROM basic_checks")
     .fetch_all(db_client)
     .await;
 
     // 'rows' variable exists for reabability
-    let result: Vec<TableNames> = match rows {
+    let result: Vec<BasicCheck> = match rows {
         Ok(val) => val,
         Err(err) => {
             error!(%err);
@@ -133,25 +124,7 @@ async fn list_check_names(db_client: &PgPool) -> Result<String, &'static str> {
         }
     };
 
-    // The database returns a list of encoded table names, so we need to decode each name and then
-    // collect the results in a Vector we can serialize
-    let table_names: Vec<String> = result
-        .iter()
-        .map(|a| {
-            match healthcheck::decode_table_name(&a.table_name) {
-                Some(val) => val,
-                // None is only returned when the decode fails
-                // This *should* never happen since we're the ones who encode it and encode using
-                // padding (no padding causeed a huge headache)
-                None => {
-                    error!(err = "failed to decode healthcheck name", table_name = %a.table_name);
-                    String::new() // This is not a *good* solution, but it's all I can think of right now
-                }
-            }
-        })
-        .collect();
-
-    let body = match serde_json::to_string(&table_names) {
+    let body = match serde_json::to_string(&result) {
         Ok(val) => val,
         Err(err) => {
             error!(%err);
@@ -170,9 +143,10 @@ mod tests {
     use rstest::rstest;
 
     impl UriQueries {
-        fn new(service_name: String, limit: Option<i32>) -> UriQueries {
+        fn new(id: Option<i32>, name: Option<String>, limit: Option<i32>) -> UriQueries {
             UriQueries {
-                service_name,
+                id,
+                name,
                 limit,
             }
         }
@@ -188,9 +162,8 @@ mod tests {
                 microseconds: 42_000,
             },
             pass: true,
-            message: "".into(),
         };
-        let expected = "{\"start_time\":\"2022-04-01 00:00:00\",\"elapsed_time\":42,\"pass\":true,\"message\":\"\"}";
+        let expected = "{\"start_time\":\"2022-04-01 00:00:00\",\"elapsed_time\":42,\"pass\":true}";
 
         let res = serde_json::to_string(&input).unwrap();
         assert_eq!(&res, expected);
@@ -198,16 +171,16 @@ mod tests {
 
     #[rstest]
     #[case(
-        Uri::try_from("/test?service=test"),
-        UriQueries::new("test".into(), None)
+        Uri::try_from("/test?name=test"),
+        UriQueries::new(None, Some("test".into()), None)
     )]
     #[case(
-        Uri::try_from("/test?service=vorona"),
-        UriQueries::new("vorona".into(), None)
+        Uri::try_from("/test?name=vorona"),
+        UriQueries::new(None, Some("vorona".into()), None)
     )]
     #[case(
-        Uri::try_from("/test?service=test&limit=10"),
-        UriQueries::new("test".into(), Some(10))
+        Uri::try_from("/test?name=test&limit=10"),
+        UriQueries::new(None, Some("test".into()), Some(10))
     )]
     fn success_decode_url_params(
         #[case] input: Result<Uri, http::uri::InvalidUri>,

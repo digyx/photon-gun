@@ -63,10 +63,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for service in conf.basic_checks {
         info!(%service.name, msg = "starting basic check...");
 
-        // Create the database table for the basic check
-        // Every basic check gets its own table
-        healthcheck::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
-
         // Ensures that the tasks runs every two seconds without being affected by the execution
         // time.  This does mean checks can overlap if execution takes too long
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
@@ -97,8 +93,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for service in conf.luxury_checks {
         info!(%service.name, msg = "starting luxury check...");
 
-        healthcheck::create_healthcheck_table(&*pool_arc.clone(), &service.name).await?;
-
         let mut interval = tokio::time::interval(Duration::from_secs(service.interval));
 
         // Script paths can be relative to the config dir; absolute paths always start with '/'
@@ -119,8 +113,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         };
 
-        let luxury_check_arc = Arc::new(healthcheck::LuxuryCheck::new(
-            service.name,
+        let luxury_check_arc = Arc::new(healthcheck::LuaCheck::new(
+            service.id,
             pool_arc.clone(),
             lua_script,
         ));

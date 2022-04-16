@@ -4,19 +4,23 @@ postgres:
   max_connections: 5
 
 basic_checks:
-  - name: google
+  - id: 0
+    name: google
     endpoint: "https://google.com"
     interval: 1
 
-  - name: vorona
+  - id: 0
+    name: vorona
     endpoint: "https://vorona.gg/healthcheck"
     interval: 1
 
 luxury_checks:
-  - name: test
+  - id: 0
+    name: test
     script: "test.lua"
     interval: 5
 
-  - name: random
+  - id: 0
+    name: random
     script: "random.lua"
     interval: 1

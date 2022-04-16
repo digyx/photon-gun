@@ -6,6 +6,12 @@ license = "MIT"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "photon-server"
+path = "src/bin/server.rs"
+test = false
+bench = false
+
 [dependencies]
 rlua = "0.19.1"
 

@@ -4,51 +4,48 @@ use rlua::StdLib;
 use sqlx::{Pool, Postgres};
 use tracing::{debug, error, info, warn};
 
+use crate::db;
+
 #[derive(Debug)]
-pub struct LuxuryCheck {
-    name: String,
+pub struct LuaCheck {
+    id: i32,
     // Actual Lua script contents
     script: String,
     db_client: Arc<Pool<Postgres>>,
-    handle: tokio::runtime::Handle,
 }
 
-impl LuxuryCheck {
-    pub fn new(name: String, db_client: Arc<Pool<Postgres>>, script: String) -> Self {
-        LuxuryCheck {
-            name,
+impl LuaCheck {
+    pub fn new(id: i32, db_client: Arc<Pool<Postgres>>, script: String) -> Self {
+        LuaCheck {
+            id,
             script,
             db_client,
-            handle: tokio::runtime::Handle::current(),
         }
     }
 
-    // The plan is to move the spawn function out of here since it doesn't follow the "functional
-    // core, imperative shell" principle.  Am I being idealisitc?  Maybe, but the library is small
-    // enough for me to be so.
+    // Run the healthcheck
     pub fn spawn(&self) {
         let start_time = time::SystemTime::now();
         let (pass, msg) = match self.run() {
             Ok(msg) => {
-                info!(%self.name, status = "pass", %msg);
+                info!(check.id = self.id, status = "pass", %msg);
                 (true, msg)
             }
             Err(err) => {
-                warn!(%self.name, status = "fail", error = %err);
+                warn!(check.id = self.id, status = "fail", error = %err);
                 (false, err)
             }
         };
 
         let db_client = self.db_client.clone();
-        let table_name = self.name.clone();
         let result =
-            super::HealthcheckResult::new(&self.name, pass, msg, start_time, start_time.elapsed());
+            super::new_healthcheck_result(self.id, pass, Some(msg), start_time, start_time.elapsed());
 
-        self.handle.spawn(async move {
+        tokio::runtime::Handle::current().spawn(async move {
             if let Err(err) =
-                result.db_insert(&db_client).await
+                db::insert_basic_check_result(&db_client, result).await
             {
-                error!(service.name = %table_name, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
+                error!(msg = "UNABLE TO WRITE TO DATABASE", error = %err);
             }
         });
     }
@@ -93,7 +90,7 @@ impl LuxuryCheck {
         }) {
             Ok(_) => debug!("Photon module loaded into Lua context."),
             Err(err) => {
-                error!(%self.name, msg = "Could not load Photon module into Lua environment.", %err);
+                error!(check.id = self.id, msg = "Could not load Photon module into Lua environment.", %err);
                 return Err(err.to_string());
             }
         };
@@ -156,7 +153,7 @@ mod tests {
 
     use super::*;
 
-    async fn setup_http_get_test(script_path: &str, status_code: u16) -> (MockServer, LuxuryCheck) {
+    async fn setup_http_get_test(script_path: &str, status_code: u16) -> (MockServer, LuaCheck) {
         let mock_webserver = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/healthcheck"))
@@ -165,12 +162,11 @@ mod tests {
             .await;
 
         let script = fs::read_to_string(script_path).unwrap();
-        let check = LuxuryCheck {
-            name: "test".into(),
+        let check = LuaCheck {
+            id: 0,
             script: script.replace("WIREMOCK_URI", &mock_webserver.uri()),
             // Since we don't use the DB in these tests, we can just lazy connect to any URI
             db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
-            handle: tokio::runtime::Handle::current(),
         };
 
         (mock_webserver, check)
