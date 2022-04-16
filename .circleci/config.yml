@@ -1,0 +1,22 @@
+version: 2.1
+
+jobs:
+  rust-lint:
+    docker:
+      - image: rust
+    steps:
+      - checkout
+      - run:
+          name: "Linting"
+          command: "cargo fmt"
+      - run:
+          name: "Clippy"
+          command: "cargo clippy -D warnings"
+      - run:
+          name: "Test"
+          command: "cargo test"
+
+workflows:
+  default:
+    jobs:
+      - rust-lint
