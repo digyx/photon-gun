@@ -1,22 +1,16 @@
 version: 2.1
 
 jobs:
-  rust-lint:
+  lint-and-test:
     docker:
       - image: rust
     steps:
       - checkout
-      - run:
-          name: "Linting"
-          command: "cargo fmt"
-      - run:
-          name: "Clippy"
-          command: "cargo clippy -D warnings"
-      - run:
-          name: "Test"
-          command: "cargo test"
+      - run: "cargo fmt"
+      - run: "cargo clippy -- -D warnings"
+      - run: "cargo test"
 
 workflows:
   default:
     jobs:
-      - rust-lint
+      - lint-and-test
