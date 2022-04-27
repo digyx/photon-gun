@@ -73,9 +73,9 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
             date_trunc('{}', start_time) as time_window,
             count(*) filter(where \"pass\") as pass,
             count(*) filter(where not \"pass\") as fail
-        FROM basic_check_results
-        WHERE check_id=$1
-            OR name=$2
+        FROM healthcheck_results
+        INNER JOIN healthchecks ON healthcheck_results.check_id=healthchecks.id
+        WHERE check_id=$1 OR name=$2
         GROUP BY time_window
         ORDER BY time_window DESC
         LIMIT 60
@@ -121,7 +121,11 @@ mod tests {
     use rstest::rstest;
 
     impl UriQueries {
-        fn new(id: Option<i32>, name: Option<String>, resolution: Option<Resolution>) -> UriQueries {
+        fn new(
+            id: Option<i32>,
+            name: Option<String>,
+            resolution: Option<Resolution>,
+        ) -> UriQueries {
             UriQueries {
                 id,
                 name,

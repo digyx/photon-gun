@@ -1,7 +1,6 @@
 use sqlx::postgres::types::PgInterval;
 use sqlx::types::chrono;
 
-pub mod config;
 pub mod db;
 pub mod healthcheck;
 pub mod webserver;

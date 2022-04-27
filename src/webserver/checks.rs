@@ -6,10 +6,9 @@ use sqlx::types::chrono;
 use sqlx::{FromRow, PgPool};
 use tracing::error;
 
-
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 struct UriQueries {
-    #[serde(alias = "service")]
+    #[serde(alias = "id")]
     id: Option<i32>,
     name: Option<String>,
     limit: Option<i32>,
@@ -17,19 +16,19 @@ struct UriQueries {
 
 #[allow(dead_code)]
 #[derive(Debug, FromRow)]
-struct Healthcheck {
+struct HealthcheckResult {
     start_time: chrono::NaiveDateTime,
     elapsed_time: PgInterval,
     pass: bool,
 }
 
 #[derive(Debug, Serialize, FromRow)]
-struct BasicCheck {
-    check_id: i32,
+struct Healthcheck {
+    id: i32,
     name: Option<String>,
 }
 
-impl Serialize for Healthcheck {
+impl Serialize for HealthcheckResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -48,7 +47,7 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
     // If there are no URI Queries, then this endpoint should return a list of healthcheck names
     // based on the (decoded) table names in the database
     if req.uri().query().is_none() {
-        let check_names = match list_check_names(db_client).await {
+        let check_names = match list_healthcheck_names(db_client).await {
             Ok(val) => val,
             Err(err) => {
                 error!(%err);
@@ -70,19 +69,15 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
     };
 
     let sql_query = "
-        SELECT
-            start_time,
-            elapsed_time,
-            pass,
-        FROM basic_check_results
-        WHERE check_id=$1
-            OR name=$2
-        ORDER BY id DESC
+        SELECT start_time, elapsed_time, pass
+        FROM healthcheck_results
+        INNER JOIN healthchecks ON healthcheck_results.check_id=healthchecks.id
+        WHERE check_id=$1 OR healthchecks.name=$2
+        ORDER BY healthcheck_results.id DESC
         LIMIT $3
         ";
 
-
-    let result: Vec<Healthcheck> = match sqlx::query_as(sql_query)
+    let result: Vec<HealthcheckResult> = match sqlx::query_as(sql_query)
         .bind(queries.id)
         .bind(queries.name)
         .bind(queries.limit.unwrap_or(100))
@@ -110,13 +105,13 @@ pub async fn handle(req: Request<Body>, db_client: &PgPool) -> Response<Body> {
     Response::new(Body::from(body))
 }
 
-async fn list_check_names(db_client: &PgPool) -> Result<String, &'static str> {
-    let rows = sqlx::query_as("SELECT check_id, name FROM basic_checks")
-    .fetch_all(db_client)
-    .await;
+async fn list_healthcheck_names(db_client: &PgPool) -> Result<String, &'static str> {
+    let rows = sqlx::query_as("SELECT id, name FROM healthchecks")
+        .fetch_all(db_client)
+        .await;
 
     // 'rows' variable exists for reabability
-    let result: Vec<BasicCheck> = match rows {
+    let result: Vec<Healthcheck> = match rows {
         Ok(val) => val,
         Err(err) => {
             error!(%err);
@@ -144,17 +139,13 @@ mod tests {
 
     impl UriQueries {
         fn new(id: Option<i32>, name: Option<String>, limit: Option<i32>) -> UriQueries {
-            UriQueries {
-                id,
-                name,
-                limit,
-            }
+            UriQueries { id, name, limit }
         }
     }
 
     #[test]
     fn success_healthcheck_serialization() {
-        let input = Healthcheck {
+        let input = HealthcheckResult {
             start_time: chrono::NaiveDateTime::from_timestamp(1648771200, 0),
             elapsed_time: PgInterval {
                 months: 0,

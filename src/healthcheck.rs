@@ -1,27 +1,42 @@
 use std::sync::Arc;
 use std::time;
 
-use sqlx::{Pool, Postgres};
+use sqlx::{postgres::types::PgInterval, types::chrono, PgPool};
 use tracing::{debug, error, info, warn};
 
-use crate::{config::BasicCheckConfig, db};
+use crate::{db, HealthcheckResult};
 
-#[derive(Debug)]
-pub struct BasicCheck {
+#[derive(Debug, Clone)]
+pub struct Healthcheck {
     id: i32,
     endpoint: String,
-    db_client: Arc<Pool<Postgres>>,
+    interval: i32,
+    db_client: Arc<PgPool>,
     http_client: reqwest::Client,
 }
 
-impl BasicCheck {
-    pub fn new(conf: BasicCheckConfig, db_client: Arc<Pool<Postgres>>) -> Self {
-        BasicCheck {
-            id: conf.id,
-            endpoint: conf.endpoint,
+impl Healthcheck {
+    pub(crate) fn new(
+        id: i32,
+        endpoint: String,
+        interval: i32,
+        db_client: Arc<PgPool>,
+    ) -> Healthcheck {
+        Healthcheck {
+            id,
+            endpoint,
+            interval,
             db_client,
             http_client: reqwest::Client::new(),
         }
+    }
+
+    pub fn get_id(&self) -> i32 {
+        self.id
+    }
+
+    pub fn get_interval(&self) -> i32 {
+        self.interval
     }
 
     pub async fn spawn(&self) {
@@ -43,11 +58,29 @@ impl BasicCheck {
             }
         };
 
-        let result =
-            super::new_healthcheck_result(self.id, pass, msg, start_time, start_time.elapsed());
+        let since_epoch = start_time.duration_since(time::UNIX_EPOCH).unwrap();
+        let elapsed_time = match start_time.elapsed() {
+            Ok(val) => val,
+            Err(err) => {
+                error!(check.id = self.id, %err, msg = "TIME MOVED BACKWARDS; CLAMPING TO ZERO");
+                time::Duration::ZERO
+            }
+        };
+
+        let result = HealthcheckResult {
+            check_id: self.id,
+            start_time: chrono::NaiveDateTime::from_timestamp(since_epoch.as_secs() as i64, 0),
+            elapsed_time: PgInterval {
+                months: 0,
+                days: 0,
+                microseconds: elapsed_time.as_micros() as i64,
+            },
+            pass,
+            message: msg,
+        };
 
         // Save result in postgres
-        if let Err(err) = db::insert_basic_check_result(&self.db_client, result).await {
+        if let Err(err) = db::insert_healthcheck_result(&self.db_client, result).await {
             error!(check.id = self.id, msg = "UNABLE TO WRITE TO DATABASE", error = %err);
         }
     }
@@ -83,28 +116,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn create_basic_check() {
-        let db_client = Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap());
-        let input = BasicCheckConfig {
-            id: 1,
-            name: "test".into(),
-            endpoint: "https://test.com".into(),
-            interval: 5,
-        };
-        let expected = BasicCheck {
-            id: 1,
-            endpoint: "https://test.com".into(),
-            db_client: db_client.clone(),
-            http_client: reqwest::Client::new(),
-        };
-
-        let res = BasicCheck::new(input, db_client.clone());
-        assert_eq!(res.id, expected.id);
-        assert_eq!(res.endpoint, expected.endpoint);
-    }
-
-    async fn test_basic_check_run(status_code: u16) -> Result<(), String> {
+    async fn test_healthcheck_run(status_code: u16) -> Result<(), String> {
         let mock_webserver = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/healthcheck"))
@@ -112,9 +124,10 @@ mod tests {
             .mount(&mock_webserver)
             .await;
 
-        let check = BasicCheck {
+        let check = Healthcheck {
             id: 0,
             endpoint: format!("{}/healthcheck", &mock_webserver.uri()),
+            interval: 1,
             db_client: Arc::new(PgPool::connect_lazy("postgres://localhost/").unwrap()),
             http_client: reqwest::Client::new(),
         };
@@ -128,7 +141,7 @@ mod tests {
     #[case(202)]
     #[tokio::test]
     async fn success(#[case] status_code: u16) {
-        test_basic_check_run(status_code).await.unwrap()
+        test_healthcheck_run(status_code).await.unwrap()
     }
 
     #[rstest]
@@ -138,7 +151,7 @@ mod tests {
     #[case(500, StatusCode::INTERNAL_SERVER_ERROR.to_string())]
     #[tokio::test]
     async fn fail(#[case] status_code: u16, #[case] expected: String) {
-        let res = test_basic_check_run(status_code).await.unwrap_err();
+        let res = test_healthcheck_run(status_code).await.unwrap_err();
         assert_eq!(res, expected);
     }
 }

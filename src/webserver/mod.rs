@@ -3,7 +3,7 @@ use std::{convert::Infallible, fmt::Debug};
 
 use hyper::{Body, Method, Request, Response, StatusCode, Uri};
 use serde::Deserialize;
-use sqlx::postgres;
+use sqlx::{Pool, Postgres};
 use tracing::debug;
 
 mod checks;
@@ -11,7 +11,7 @@ mod summary;
 
 pub async fn handler(
     req: Request<Body>,
-    db_client: Arc<postgres::PgPool>,
+    db_client: Arc<Pool<Postgres>>,
 ) -> Result<Response<Body>, Infallible> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/") => Ok(Response::new(Body::from("Pew pew"))),
