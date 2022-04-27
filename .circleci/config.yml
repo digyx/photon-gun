@@ -1,0 +1,16 @@
+version: 2.1
+
+jobs:
+  lint-and-test:
+    docker:
+      - image: rust
+    steps:
+      - checkout
+      - run: "cargo fmt"
+      - run: "cargo clippy -- -D warnings"
+      - run: "cargo test"
+
+workflows:
+  default:
+    jobs:
+      - lint-and-test
