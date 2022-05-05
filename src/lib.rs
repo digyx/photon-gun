@@ -1,14 +1,12 @@
-use sqlx::postgres::types::PgInterval;
-use sqlx::types::chrono;
+mod protobuf {
+    tonic::include_proto!("photon_gun");
+}
 
 pub mod db;
+pub mod grpc;
 pub mod healthcheck;
-pub mod webserver;
 
-struct HealthcheckResult {
-    check_id: i32,
-    start_time: chrono::NaiveDateTime,
-    elapsed_time: PgInterval,
-    pass: bool,
-    message: Option<String>,
-}
+pub use protobuf::photon_gun_server::PhotonGunServer;
+pub use protobuf::Empty;
+pub use protobuf::{query_filter, ListQuery, QueryFilter, ResultQuery};
+pub use protobuf::{Healthcheck, HealthcheckList, HealthcheckResult, HealthcheckResultList};

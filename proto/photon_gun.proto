@@ -1,0 +1,59 @@
+syntax = "proto3";
+package photon_gun;
+
+// Types
+message Healthcheck {
+    int32 id = 1;
+    optional string name = 2;
+    string endpoint = 3;
+    int32 interval = 4;
+    bool enabled = 5;
+}
+
+message HealthcheckList {
+    repeated Healthcheck healthchecks = 1;
+}
+
+message HealthcheckResult {
+    int64 id = 1;
+    int32 check_id = 2;
+    int64 start_time = 3;
+    int64 elapsed_time = 4;
+    bool pass = 5;
+    optional string message = 6;
+}
+
+message HealthcheckResultList {
+    repeated HealthcheckResult healthcheck_results = 1;
+}
+
+message QueryFilter {
+    oneof binds {
+        int32 id = 1;
+    }
+}
+
+message ListQuery {
+    optional bool enabled = 1;
+    optional int32 limit = 2;
+}
+
+message ResultQuery {
+    int32 id = 1;
+    optional int32 limit = 2;
+}
+
+message Empty {}
+
+// Services
+service PhotonGun {
+    rpc GetHealthcheck(QueryFilter) returns (Healthcheck) {}
+    rpc ListHealthchecks(ListQuery) returns (HealthcheckList) {}
+    rpc ListHealthcheckResults(ResultQuery) returns (HealthcheckResultList) {}
+
+    rpc CreateHealthcheck(Healthcheck) returns (Healthcheck){}
+    rpc DeleteHealthcheck(QueryFilter) returns (Healthcheck) {}
+
+    rpc EnableHealthcheck(QueryFilter) returns (Healthcheck) {}
+    rpc DisableHealthcheck(QueryFilter) returns (Empty) {}
+}

@@ -6,6 +6,7 @@ jobs:
       - image: rust
     steps:
       - checkout
+      - run: "apt update && apt install -y cmake"
       - run: "cargo fmt"
       - run: "cargo clippy -- -D warnings"
       - run: "cargo test"
