@@ -1,4 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("proto/photon_gun.proto")?;
+    tonic_build::configure()
+        .type_attribute(".", "#[derive(serde::Serialize)]")
+        .compile(&["proto/photon_gun.proto"], &["proto"])?;
     Ok(())
 }

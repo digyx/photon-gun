@@ -26,10 +26,6 @@ struct ClapArgs {
     /// Logging level (error, warn, info, debug, trace)
     #[clap(long = "log", default_value = "info")]
     logging_level: tracing::Level,
-
-    /// Enable embedded rest-api webserver
-    #[clap(long = "rest-api")]
-    enable_rest_api: bool,
 }
 
 #[tokio::main]

@@ -12,6 +12,12 @@ path = "src/bin/server.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "photon-client"
+path = "src/bin/client.rs"
+test = false
+bench = false
+
 [dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
 tonic = "0.7.1"
