@@ -167,13 +167,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(101, StatusCode::SWITCHING_PROTOCOLS.to_string())]
-    #[case(304, StatusCode::NOT_MODIFIED.to_string())]
-    #[case(404, StatusCode::NOT_FOUND.to_string())]
-    #[case(500, StatusCode::INTERNAL_SERVER_ERROR.to_string())]
+    #[case(101, StatusCode::SWITCHING_PROTOCOLS)]
+    #[case(304, StatusCode::NOT_MODIFIED)]
+    #[case(404, StatusCode::NOT_FOUND)]
+    #[case(500, StatusCode::INTERNAL_SERVER_ERROR)]
     #[tokio::test]
-    async fn fail(#[case] status_code: u16, #[case] expected: String) {
+    async fn fail(#[case] status_code: u16, #[case] expected: http::StatusCode) {
         let res = test_healthcheck_ping(status_code).await.unwrap_err();
-        assert_eq!(res, expected);
+        assert_eq!(res, expected.to_string());
     }
 }

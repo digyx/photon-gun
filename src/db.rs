@@ -1,4 +1,6 @@
-use sqlx::{postgres::types::PgInterval, types::chrono, FromRow, PgPool};
+use sqlx::postgres::types::PgInterval;
+use sqlx::types::chrono;
+use sqlx::{FromRow, PgPool};
 
 use crate::{Healthcheck, HealthcheckList, HealthcheckResult, HealthcheckResultList};
 
@@ -37,7 +39,6 @@ impl From<HealthcheckSchema> for Healthcheck {
 
 #[derive(Debug, FromRow)]
 struct HealthcheckResultSchema {
-    #[allow(dead_code)]
     id: i64,
     check_id: i32,
     start_time: chrono::NaiveDateTime,

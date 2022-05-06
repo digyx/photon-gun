@@ -18,3 +18,23 @@ pub(super) fn id_from_query_filter(filter: QueryFilter) -> Result<i32, Status> {
 
     Ok(id)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rstest::rstest;
+
+    const VALID_ID_FILTER: QueryFilter = QueryFilter {
+        binds: Some(query_filter::Binds::Id(1)),
+    };
+
+    const NONE_FILTER: QueryFilter = QueryFilter { binds: None };
+
+    #[rstest]
+    #[case(VALID_ID_FILTER)]
+    #[should_panic] // None should return error
+    #[case(NONE_FILTER)]
+    fn test_id_from_query_filter(#[case] filter: QueryFilter) {
+        id_from_query_filter(filter).unwrap();
+    }
+}
