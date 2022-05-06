@@ -16,6 +16,17 @@ pub struct HealthcheckService {
     http_client: reqwest::Client,
 }
 
+pub async fn load_from_database(pool: Arc<PgPool>) -> Result<Vec<HealthcheckService>, sqlx::Error> {
+    let res = db::list_healthchecks(&pool, true, std::i32::MAX)
+        .await?
+        .healthchecks
+        .into_iter()
+        .map(|x| HealthcheckService::new(x, pool.clone()))
+        .collect();
+
+    Ok(res)
+}
+
 impl HealthcheckService {
     pub fn new(check: Healthcheck, db_client: Arc<PgPool>) -> HealthcheckService {
         HealthcheckService {
@@ -25,6 +36,10 @@ impl HealthcheckService {
             db_client,
             http_client: reqwest::Client::new(),
         }
+    }
+
+    pub fn id(&self) -> i32 {
+        self.id
     }
 
     pub async fn spawn(self) -> JoinHandle<()> {

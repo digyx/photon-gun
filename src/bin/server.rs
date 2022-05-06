@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::i32::MAX;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -10,8 +9,6 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 use tracing::{error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
-
-use photon_gun::healthcheck::HealthcheckService;
 
 #[derive(Debug, Parser)]
 struct ClapArgs {
@@ -55,7 +52,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
     let pool_arc = Arc::new(pool);
 
-    if let Err(err) = photon_gun::db::initialize_tables(&pool_arc).await {
+    if let Err(err) = photon_gun::initialize_tables(&pool_arc).await {
         error!(%err);
         panic!("{}", err);
     }
@@ -63,13 +60,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Spin off healthchecks into their own Tokio task
     // We save the handlers for aborting later if they are removed or to stop the service
     let mut healthcheck_handlers = HashMap::new();
-    let healthcheck_vec = photon_gun::db::list_healthchecks(&pool_arc, true, MAX)
-        .await?
-        .healthchecks;
+    let healthcheck_services = photon_gun::load_from_database(pool_arc.clone()).await?;
 
-    for healthcheck in healthcheck_vec {
-        let id = healthcheck.id; // Copy value for later use
-        let service = HealthcheckService::new(healthcheck, pool_arc.clone());
+    for service in healthcheck_services {
+        let id = service.id();
         let handle = service.spawn().await;
 
         healthcheck_handlers.insert(id, handle);

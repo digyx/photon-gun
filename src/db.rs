@@ -110,13 +110,13 @@ pub async fn initialize_tables(pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 // ==================== Healthcheck Operations ====================
-pub async fn get_healthcheck(pool: &PgPool, id: i32) -> Result<Healthcheck, sqlx::Error> {
+pub(crate) async fn get_healthcheck(pool: &PgPool, id: i32) -> Result<Healthcheck, sqlx::Error> {
     let sql_query = "SELECT * FROM healthchecks WHERE id=$1";
     let res: HealthcheckSchema = sqlx::query_as(sql_query).bind(id).fetch_one(pool).await?;
     Ok(res.into())
 }
 
-pub async fn list_healthchecks(
+pub(crate) async fn list_healthchecks(
     pool: &PgPool,
     enabled: bool,
     limit: i32,
@@ -134,7 +134,10 @@ pub async fn list_healthchecks(
     })
 }
 
-pub async fn insert_healthcheck(pool: &PgPool, check: &Healthcheck) -> Result<i32, sqlx::Error> {
+pub(crate) async fn insert_healthcheck(
+    pool: &PgPool,
+    check: &Healthcheck,
+) -> Result<i32, sqlx::Error> {
     #[derive(FromRow)]
     struct ID {
         id: i32,
@@ -151,21 +154,21 @@ pub async fn insert_healthcheck(pool: &PgPool, check: &Healthcheck) -> Result<i3
     Ok(res.id)
 }
 
-pub async fn delete_healthcheck(pool: &PgPool, id: i32) -> Result<Healthcheck, sqlx::Error> {
+pub(crate) async fn delete_healthcheck(pool: &PgPool, id: i32) -> Result<Healthcheck, sqlx::Error> {
     let sql_query = "DELETE FROM healthchecks WHERE id=$1 RETURNING healthchecks.*";
     let res: HealthcheckSchema = sqlx::query_as(sql_query).bind(id).fetch_one(pool).await?;
 
     Ok(res.into())
 }
 
-pub async fn enable_healthcheck(pool: &PgPool, id: i32) -> Result<(), sqlx::Error> {
+pub(crate) async fn enable_healthcheck(pool: &PgPool, id: i32) -> Result<(), sqlx::Error> {
     let sql_query = "UPDATE healthchecks SET enabled=true WHERE id=$1";
     sqlx::query(sql_query).bind(id).execute(pool).await?;
 
     Ok(())
 }
 
-pub async fn disable_healthcheck(pool: &PgPool, id: i32) -> Result<(), sqlx::Error> {
+pub(crate) async fn disable_healthcheck(pool: &PgPool, id: i32) -> Result<(), sqlx::Error> {
     let sql_query = "UPDATE healthchecks SET enabled=false WHERE id=$1";
     sqlx::query(sql_query).bind(id).execute(pool).await?;
 
