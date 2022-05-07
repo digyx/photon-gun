@@ -10,7 +10,7 @@ use tracing::{error, info};
 use crate::healthcheck::HealthcheckService;
 use crate::{db, protobuf};
 use crate::{Empty, ListQuery, QueryFilter};
-use crate::{Healthcheck, HealthcheckList, HealthcheckResultList, ResultQuery};
+use crate::{Healthcheck, HealthcheckList, HealthcheckResultList, HealthcheckUpdate, ResultQuery};
 
 mod util;
 
@@ -114,6 +114,48 @@ impl protobuf::photon_gun_server::PhotonGun for Server {
         }
 
         info!(healthcheck.id = id, msg = "Created.");
+        Ok(Response::new(check))
+    }
+
+    async fn update_healthcheck(
+        &self,
+        query: Request<HealthcheckUpdate>,
+    ) -> Result<Response<Healthcheck>, Status> {
+        let query = query.into_inner();
+
+        if let Some(name) = query.name {
+            if let Err(err) = db::update_healthcheck_name(&self.db_client, query.id, &name).await {
+                error!(healthcheck.id = query.id, %err);
+                return Err(Status::new(Code::Internal, err.to_string()));
+            }
+        }
+
+        if let Some(endpoint) = query.endpoint {
+            if let Err(err) =
+                db::update_healthcheck_endpoint(&self.db_client, query.id, &endpoint).await
+            {
+                error!(healthcheck.id = query.id, %err);
+                return Err(Status::new(Code::Internal, err.to_string()));
+            }
+        }
+
+        if let Some(interval) = query.interval {
+            if let Err(err) =
+                db::update_healthcheck_interval(&self.db_client, query.id, interval).await
+            {
+                error!(healthcheck.id = query.id, %err);
+                return Err(Status::new(Code::Internal, err.to_string()));
+            }
+        }
+
+        let check = match db::get_healthcheck(&self.db_client, query.id).await {
+            Ok(val) => val,
+            Err(err) => {
+                error!(healthcheck.id = query.id, %err);
+                return Err(Status::new(Code::Internal, err.to_string()));
+            }
+        };
+
         Ok(Response::new(check))
     }
 

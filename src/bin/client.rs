@@ -4,7 +4,10 @@ use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 use tonic::{Request, Response};
 
-use photon_gun::{query_filter, Healthcheck, ListQuery, PhotonGunClient, QueryFilter, ResultQuery};
+use photon_gun::{
+    query_filter, Healthcheck, HealthcheckUpdate, ListQuery, PhotonGunClient, QueryFilter,
+    ResultQuery,
+};
 
 #[derive(Debug, Parser)]
 struct ClapArgs {
@@ -34,6 +37,15 @@ enum Action {
         endpoint: String,
         #[clap(long = "interval", default_value = "5")]
         interval: i32,
+    },
+    Update {
+        id: i32,
+        #[clap(long = "name", short = 'n')]
+        name: Option<String>,
+        #[clap(long = "endpoint", short = 'e')]
+        endpoint: Option<String>,
+        #[clap(long = "interval", short = 'i')]
+        interval: Option<i32>,
     },
     Delete(QueryOpts),
     Enable(QueryOpts),
@@ -91,6 +103,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let res = client.create_healthcheck(req).await?;
+            print_response(res);
+        }
+
+        Action::Update {
+            id,
+            name,
+            endpoint,
+            interval,
+        } => {
+            let req = Request::new(HealthcheckUpdate {
+                id,
+                name,
+                endpoint,
+                interval,
+            });
+
+            let res = client.update_healthcheck(req).await?;
             print_response(res);
         }
 

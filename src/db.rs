@@ -155,6 +155,48 @@ pub(crate) async fn insert_healthcheck(
     Ok(res.id)
 }
 
+pub(crate) async fn update_healthcheck_name(
+    pool: &PgPool,
+    id: i32,
+    name: &str,
+) -> Result<(), sqlx::Error> {
+    let sql_query = "UPDATE healthchecks SET name=$1 WHERE id=$2";
+    sqlx::query(sql_query)
+        .bind(name)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn update_healthcheck_endpoint(
+    pool: &PgPool,
+    id: i32,
+    endpoint: &str,
+) -> Result<(), sqlx::Error> {
+    let sql_query = "UPDATE healthchecks SET endpoint=$1 WHERE id=$2";
+    sqlx::query(sql_query)
+        .bind(endpoint)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn update_healthcheck_interval(
+    pool: &PgPool,
+    id: i32,
+    interval: i32,
+) -> Result<(), sqlx::Error> {
+    let sql_query = "UPDATE healthchecks SET interval=$1 WHERE id=$2";
+    sqlx::query(sql_query)
+        .bind(interval)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub(crate) async fn delete_healthcheck(pool: &PgPool, id: i32) -> Result<Healthcheck, sqlx::Error> {
     let sql_query = "DELETE FROM healthchecks WHERE id=$1 RETURNING healthchecks.*";
     let res: HealthcheckSchema = sqlx::query_as(sql_query).bind(id).fetch_one(pool).await?;
