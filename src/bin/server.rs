@@ -1,17 +1,19 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use clap::Parser;
+use photon_gun::PhotonGunServer;
 use sqlx::postgres::PgPoolOptions;
-use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::Mutex;
+use tower_http::{auth::RequireAuthorizationLayer, trace::TraceLayer};
 use tracing::{error, info, Level};
 use tracing_subscriber::{filter, prelude::*};
 
 #[derive(Debug, Parser)]
 struct ClapArgs {
+    #[clap(long = "secret", env = "PHOTON_GUN_SECRET_KEY")]
+    secret_key: String,
+
     /// Postgres URI or Connection Parameters
     #[clap(long = "postgres")]
     postgres_uri: String,
@@ -57,40 +59,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         panic!("{}", err);
     }
 
-    // Spin off healthchecks into their own Tokio task
-    // We save the handlers for aborting later if they are removed or to stop the service
-    let mut healthcheck_handlers = HashMap::new();
-    let healthcheck_services = photon_gun::load_from_database(pool_arc.clone()).await?;
-
-    for service in healthcheck_services {
-        let id = service.id();
-        let handle = service.spawn().await;
-
-        healthcheck_handlers.insert(id, handle);
-    }
-
     // Spin up the gRPC server
-    info!(msg = "starting gRPC server...");
-    let service = photon_gun::grpc::Server::new(pool_arc.clone(), Mutex::new(healthcheck_handlers));
+    let context = photon_gun::grpc::Server::new(pool_arc.clone());
     let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
-    let grpc_server = tonic::transport::Server::builder()
-        .layer(tower_http::trace::TraceLayer::new_for_grpc())
-        .add_service(photon_gun::PhotonGunServer::new(service));
-    tokio::task::spawn(grpc_server.serve(addr));
-    info!(msg = "server started.", %addr);
+    let svc = PhotonGunServer::new(context);
+    let server = tonic::transport::Server::builder()
+        .layer(TraceLayer::new_for_grpc())
+        .layer(RequireAuthorizationLayer::bearer(&cli_args.secret_key))
+        .add_service(svc);
 
-    let mut sigint = signal(SignalKind::interrupt())?;
-    let mut sigterm = signal(SignalKind::terminate())?;
+    info!(msg = "starting gRPC server...");
+    server.serve(addr).await?;
+    info!(msg = "server stopped.");
 
-    // Wait for all handlers
-    tokio::select! {
-        _ = sigint.recv() => info!(msg = "SIGINT received"),
-        _ = sigterm.recv() => info!(msg = "SIGTERM received"),
-    }
-
-    info!(msg = "aborting tasks...");
-    // TODO: Gracefully abort tasks...
-
-    info!(msg = "tasks stopped.");
     Ok(())
 }

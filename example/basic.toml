@@ -1,0 +1,3 @@
+[[healthchecks]]
+endpoint = "https://google.com/"
+interval = 5
