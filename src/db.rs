@@ -76,7 +76,7 @@ pub(crate) async fn insert_healthcheck(
         ";
 
     sqlx::query(sql_query)
-        .bind(&agent_uuid)
+        .bind(agent_uuid)
         .bind(check.pass)
         .bind(&check.endpoint)
         .bind(check.start_time)
